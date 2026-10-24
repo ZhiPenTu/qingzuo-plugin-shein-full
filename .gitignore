@@ -1,0 +1,5 @@
+node_modules/
+release/
+output/
+.env*
+.DS_Store

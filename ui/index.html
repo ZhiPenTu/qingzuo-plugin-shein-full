@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>希音全托管铺货</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <p class="eyebrow">全托管铺货</p>
+      <h1>1688 选品 · 希音草稿</h1>
+    </div>
+    <div class="topbar-actions">
+      <span id="gate-note" class="gate-note">未确认不会发品</span>
+      <button id="toggle-settings" class="secondary small" type="button">设置</button>
+    </div>
+  </header>
+
+  <section id="settings" class="panel settings" hidden>
+    <div class="panel-head">
+      <h2>连接与翻译</h2>
+      <span class="muted">密钥只保存在系统凭据库</span>
+    </div>
+    <div class="settings-grid">
+      <div class="field">
+        <label for="provider">翻译服务</label>
+        <select id="provider">
+          <option value="openai">OpenAI</option>
+          <option value="deepseek">DeepSeek</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="model">模型</label>
+        <input id="model" type="text" placeholder="留空使用默认模型" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="default-coefficient">新草稿加价系数</label>
+        <input id="default-coefficient" type="number" min="1.05" max="3" step="0.01" value="1.35">
+      </div>
+      <div class="field">
+        <label for="site">目标站点</label>
+        <input id="site" type="text" value="shein" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="base-url">希音接口</label>
+        <select id="base-url">
+          <option value="https://openapi.sheincorp.com">正式环境</option>
+          <option value="https://openapi-test01.sheincorp.cn">测试环境</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="open-key">希音 openKeyId</label>
+        <input id="open-key" type="text" autocomplete="off" placeholder="开放平台应用标识">
+      </div>
+      <div class="field">
+        <label for="secret-key">希音 secretKey</label>
+        <div class="row">
+          <input id="secret-key" type="password" autocomplete="off" placeholder="不会显示已保存的值">
+          <button id="save-secret" class="secondary small" type="button">保存</button>
+          <button id="clear-secret" class="secondary small" type="button">清除</button>
+        </div>
+        <p id="secret-status" class="hint" role="status"></p>
+      </div>
+      <div class="field">
+        <label for="translation-key">翻译密钥</label>
+        <div class="row">
+          <input id="translation-key" type="password" autocomplete="off" placeholder="所选翻译服务的 API 密钥">
+          <button id="save-translation" class="secondary small" type="button">保存</button>
+          <button id="clear-translation" class="secondary small" type="button">清除</button>
+        </div>
+        <p id="translation-status" class="hint" role="status"></p>
+      </div>
+    </div>
+    <div class="actions">
+      <button id="save-settings" type="button">保存设置</button>
+      <span id="settings-status" class="status" role="status"></span>
+    </div>
+    <p class="hint">1688 需要在内嵌浏览器登录一次。采集只读取当前页面的结构化内容，不会读取 Cookie 或隐藏字段。</p>
+  </section>
+
+  <section class="panel collect">
+    <div class="panel-head">
+      <h2>采集商品</h2>
+      <span class="muted">右侧浏览器会并排打开</span>
+    </div>
+    <div class="row">
+      <input id="source-url" type="url" autocomplete="off" placeholder="粘贴 1688 商品详情链接，例如 https://detail.1688.com/offer/826500000001.html">
+      <button id="collect" type="button">采集</button>
+    </div>
+    <p id="collect-status" class="status" role="status"></p>
+  </section>
+
+  <div class="workspace">
+    <aside class="panel drafts">
+      <div class="panel-head">
+        <h2>草稿</h2>
+        <span id="draft-count" class="muted">0</span>
+      </div>
+      <ul id="draft-list" class="draft-list"></ul>
+      <p id="draft-empty" class="empty">采集链接后，草稿会出现在这里。</p>
+    </aside>
+
+    <section id="review" class="panel review" hidden>
+      <div class="review-head">
+        <div class="review-heading">
+          <span id="review-status" class="chip"></span>
+          <h2 id="review-title">未命名商品</h2>
+          <p id="review-meta" class="muted"></p>
+        </div>
+        <div class="review-tools">
+          <button id="open-source" class="secondary small" type="button">打开原页</button>
+          <button id="delete-draft" class="secondary small danger" type="button">删除</button>
+        </div>
+      </div>
+
+      <div id="submission" class="submission" hidden></div>
+
+      <div class="compare">
+        <article class="source">
+          <h3>1688 原貌</h3>
+          <p id="source-title" class="source-title"></p>
+          <dl id="source-facts" class="facts"></dl>
+          <div id="source-images" class="thumb-grid"></div>
+          <details id="source-attributes-wrap" class="details">
+            <summary>原始属性</summary>
+            <dl id="source-attributes" class="facts"></dl>
+          </details>
+        </article>
+
+        <article class="final">
+          <h3>希音终稿</h3>
+          <div class="field">
+            <label for="title-en">英文标题</label>
+            <input id="title-en" type="text" maxlength="200" autocomplete="off">
+            <p id="title-zh" class="hint"></p>
+          </div>
+          <div class="field">
+            <label for="bullets">卖点（每行一条）</label>
+            <textarea id="bullets" rows="4"></textarea>
+          </div>
+          <div class="field">
+            <label for="description">英文描述</label>
+            <textarea id="description" rows="4"></textarea>
+          </div>
+
+          <div class="field">
+            <label>希音类目</label>
+            <div class="row">
+              <input id="category-id" type="text" inputmode="numeric" placeholder="末级类目 ID" autocomplete="off">
+              <input id="product-type-id" type="text" inputmode="numeric" placeholder="product_type_id" autocomplete="off">
+              <button id="load-template" class="secondary" type="button">读取属性模板</button>
+            </div>
+            <div class="row">
+              <button id="suggest-category" class="secondary small" type="button">推荐类目</button>
+              <label class="check"><input id="category-confirmed" type="checkbox"> 类目已确认</label>
+            </div>
+            <div id="category-suggestions" class="suggestions"></div>
+            <span id="category-hint" class="hint"></span>
+          </div>
+
+          <div id="attributes" class="attributes"></div>
+
+          <div class="field">
+            <label>商品图片</label>
+            <div id="image-list" class="image-list"></div>
+            <div class="row">
+              <button id="prepare-images" class="secondary" type="button">从 1688 转存图片</button>
+              <span id="image-hint" class="hint"></span>
+            </div>
+          </div>
+
+          <div class="field">
+            <label>SKU 与供货价</label>
+            <div class="row compact">
+              <span class="hint">加价系数</span>
+              <input id="coefficient" class="narrow" type="number" min="1.05" max="3" step="0.01">
+              <span id="coefficient-hint" class="hint"></span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>1688 颜色</th><th>英文颜色</th><th>希音颜色值</th><th>1688 单价</th><th>供货价</th><th>供货 SKU</th><th>库存</th></tr>
+                </thead>
+                <tbody id="sku-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </article>
+      </div>
+
+      <div id="issues" class="issues"></div>
+
+      <div class="review-footer">
+        <div class="footer-actions">
+          <button id="translate" class="secondary" type="button">翻译图文</button>
+          <button id="save" class="secondary" type="button">保存草稿</button>
+          <button id="poll" class="secondary" type="button" hidden>查询审核状态</button>
+          <button id="resume" class="secondary" type="button" hidden>重新编辑</button>
+          <button id="submit" class="primary" type="button">提交到希音</button>
+        </div>
+        <p id="action-status" class="status" role="status"></p>
+      </div>
+    </section>
+
+    <section id="no-draft" class="panel empty-review">
+      <h2>还没有选中的草稿</h2>
+      <p>先粘贴 1688 商品链接完成采集，再在这里对照原貌修改英文终稿。</p>
+    </section>
+  </div>
+</div>
+
+<div id="submit-dialog" class="dialog" hidden>
+  <div class="dialog-card" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
+    <h2 id="dialog-title">确认提交到希音</h2>
+    <dl id="submit-summary" class="facts"></dl>
+    <label id="retry-wrap" class="check" hidden><input id="retry-check" type="checkbox"> 我已在希音后台核对，确认上次没有建成商品</label>
+    <p class="warning">提交后商品进入希音审核，审核期间不能直接修改。</p>
+    <div class="dialog-actions">
+      <button id="submit-cancel" class="secondary" type="button">取消</button>
+      <button id="submit-confirm" class="primary" type="button">确认提交</button>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="./app.mjs"></script>
+</body>
+</html>

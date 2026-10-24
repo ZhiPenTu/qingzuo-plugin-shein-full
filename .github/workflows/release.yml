@@ -1,0 +1,98 @@
+name: Build shein-full plugin
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      host_run_id:
+        description: 'Successful ZhiPenTu/qingzuo-desktop Release commerce desktop validation run ID'
+        required: true
+        type: string
+permissions:
+  contents: read
+defaults:
+  run:
+    shell: bash
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      QINGZUO_HOST_RUN_ID: ${{ inputs.host_run_id || vars.QINGZUO_HOST_RUN_ID }}
+      GH_TOKEN: ${{ github.token }}
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      # 插件依赖 API 1.3 的浏览器与签名能力，必须跑在支持 1.3 的宿主上。
+      # 固定一次成功的底座发布验证，避免用未知宿主冒充兼容。
+      - name: Require a pinned, successful host validation
+        run: |
+          node --input-type=module -e "if(!/^[0-9]+$/.test(process.env.QINGZUO_HOST_RUN_ID||'')) throw new Error('Pinned host run ID required');"
+          gh run view "$QINGZUO_HOST_RUN_ID" --repo ZhiPenTu/qingzuo-desktop --json conclusion,workflowName | node --input-type=module -e "let text='';for await(const chunk of process.stdin)text+=chunk;const run=JSON.parse(text);if(run.conclusion!=='success'||run.workflowName!=='Release commerce desktop')throw new Error('Host validation not successful');"
+      - uses: actions/download-artifact@v4
+        with:
+          repository: ZhiPenTu/qingzuo-desktop
+          run-id: ${{ env.QINGZUO_HOST_RUN_ID }}
+          github-token: ${{ github.token }}
+          name: Commerce-${{ runner.os }}
+          path: host
+      - name: Prepare pinned host executable
+        run: |
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            zip=$(find host -name '*-mac-arm64.zip' -type f)
+            test -n "$zip"
+            ditto -x -k "$zip" host/runtime
+            echo "QINGZUO_HOST_EXECUTABLE=$PWD/host/runtime/Qingzuo.app/Contents/MacOS/Qingzuo" >> "$GITHUB_ENV"
+          else
+            echo "QINGZUO_HOST_EXECUTABLE=$PWD/host/desktop/win-unpacked/Qingzuo.exe" >> "$GITHUB_ENV"
+          fi
+      - name: Build and test plugin
+        run: |
+          npm ci --ignore-scripts
+          npm test
+          npm run pack
+          npm run test:host
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Plugin-${{ runner.os }}
+          path: |
+            release/*.ecplugin
+            release/catalog-*.json
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: Plugin-*
+          path: release
+          merge-multiple: true
+      - name: Publish independently validated artifacts
+        run: |
+          node --input-type=module -e "import pkg from './package.json' with {type:'json'};if(process.env.GITHUB_REF_NAME!=='v'+pkg.version)throw new Error('Tag mismatch');"
+          gh release create "$GITHUB_REF_NAME" release/*.ecplugin release/catalog-*.json --verify-tag --title "$GITHUB_REF_NAME" --notes "Independent plugin release, validated in the pinned Qingzuo OS sandbox. Market signing and review happen separately."
+      - name: Notify market when restricted dispatch credentials are configured
+        env:
+          GH_TOKEN: ${{ secrets.MARKET_TRIGGER_TOKEN }}
+        run: |
+          if [[ -n "$GH_TOKEN" ]]; then
+            gh api --method POST repos/ZhiPenTu/qingzuo-market/actions/workflows/ingest.yml/dispatches -f ref=main -f "inputs[repository]=$GITHUB_REPOSITORY" -f "inputs[tag]=$GITHUB_REF_NAME"
+          else
+            echo "The market scheduled workflow will propose this stable release."
+          fi

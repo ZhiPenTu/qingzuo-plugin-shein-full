@@ -1,0 +1,389 @@
+{
+  "url": "https://detail.1688.com/offer/826500000001.html",
+  "title": "纯棉针织围巾 冬季加厚保暖 韩版百搭情侣款-阿里巴巴",
+  "nodes": [
+    {
+      "ref": "qz-1",
+      "role": "link",
+      "name": "首页",
+      "value": "",
+      "visible": true,
+      "rect": {
+        "x": 20,
+        "y": 10,
+        "width": 40,
+        "height": 20
+      }
+    },
+    {
+      "ref": "qz-2",
+      "role": "link",
+      "name": "围巾",
+      "value": "",
+      "visible": true,
+      "rect": {
+        "x": 70,
+        "y": 10,
+        "width": 40,
+        "height": 20
+      }
+    },
+    {
+      "ref": "qz-3",
+      "role": "link",
+      "name": "登录",
+      "value": "",
+      "visible": true,
+      "rect": {
+        "x": 1200,
+        "y": 10,
+        "width": 40,
+        "height": 20
+      }
+    },
+    {
+      "ref": "qz-4",
+      "role": "heading",
+      "name": "纯棉针织围巾 冬季加厚保暖 韩版百搭情侣款",
+      "value": "",
+      "visible": true,
+      "rect": {
+        "x": 40,
+        "y": 140,
+        "width": 700,
+        "height": 36
+      }
+    },
+    {
+      "ref": "qz-5",
+      "role": "generic",
+      "name": "¥ 12.50",
+      "value": "",
+      "visible": true,
+      "rect": {
+        "x": 40,
+        "y": 200,
+        "width": 90,
+        "height": 28
+      }
+    },
+    {
+      "ref": "qz-6",
+      "role": "generic",
+      "name": "¥13.00",
+      "value": "",
+      "visible": true,
+      "rect": {
+        "x": 140,
+        "y": 200,
+        "width": 90,
+        "height": 28
+      }
+    },
+    {
+      "ref": "qz-7",
+      "role": "generic",
+      "name": "2 件起批",
+      "value": "",
+      "visible": true,
+      "rect": {
+        "x": 40,
+        "y": 240,
+        "width": 120,
+        "height": 22
+      }
+    },
+    {
+      "ref": "qz-8",
+      "role": "cell",
+      "name": "材质",
+      "value": "",
+      "visible": true,
+      "rect": {
+        "x": 40,
+        "y": 300,
+        "width": 100,
+        "height": 24
+      }
+    },
+    {
+      "ref": "qz-9",
+      "role": "cell",
+      "name": "棉",
+      "value": "",
+      "visible": true,
+      "rect": {
+        "x": 160,
+        "y": 300,
+        "width": 200,
+        "height": 24
+      }
+    },
+    {
+      "ref": "qz-10",
+      "role": "cell",
+      "name": "风格",
+      "value": "",
+      "visible": true,
+      "rect": {
+        "x": 40,
+        "y": 336,
+        "width": 100,
+        "height": 24
+      }
+    },
+    {
+      "ref": "qz-11",
+      "role": "cell",
+      "name": "简约",
+      "value": "",
+      "visible": true,
+      "rect": {
+        "x": 160,
+        "y": 336,
+        "width": 200,
+        "height": 24
+      }
+    },
+    {
+      "ref": "qz-12",
+      "role": "cell",
+      "name": "适用季节",
+      "value": "",
+      "visible": true,
+      "rect": {
+        "x": 40,
+        "y": 372,
+        "width": 100,
+        "height": 24
+      }
+    },
+    {
+      "ref": "qz-13",
+      "role": "cell",
+      "name": "秋冬",
+      "value": "",
+      "visible": true,
+      "rect": {
+        "x": 160,
+        "y": 372,
+        "width": 200,
+        "height": 24
+      }
+    },
+    {
+      "ref": "qz-14",
+      "role": "cell",
+      "name": "颜色分类",
+      "value": "",
+      "visible": true,
+      "rect": {
+        "x": 40,
+        "y": 440,
+        "width": 100,
+        "height": 24
+      }
+    },
+    {
+      "ref": "qz-15",
+      "role": "cell",
+      "name": "单价",
+      "value": "",
+      "visible": true,
+      "rect": {
+        "x": 160,
+        "y": 440,
+        "width": 80,
+        "height": 24
+      }
+    },
+    {
+      "ref": "qz-16",
+      "role": "cell",
+      "name": "库存",
+      "value": "",
+      "visible": true,
+      "rect": {
+        "x": 260,
+        "y": 440,
+        "width": 80,
+        "height": 24
+      }
+    },
+    {
+      "ref": "qz-17",
+      "role": "cell",
+      "name": "米白",
+      "value": "",
+      "visible": true,
+      "rect": {
+        "x": 40,
+        "y": 476,
+        "width": 100,
+        "height": 24
+      }
+    },
+    {
+      "ref": "qz-18",
+      "role": "cell",
+      "name": "12.50",
+      "value": "",
+      "visible": true,
+      "rect": {
+        "x": 160,
+        "y": 476,
+        "width": 80,
+        "height": 24
+      }
+    },
+    {
+      "ref": "qz-19",
+      "role": "cell",
+      "name": "900",
+      "value": "",
+      "visible": true,
+      "rect": {
+        "x": 260,
+        "y": 476,
+        "width": 80,
+        "height": 24
+      }
+    },
+    {
+      "ref": "qz-20",
+      "role": "cell",
+      "name": "墨黑",
+      "value": "",
+      "visible": true,
+      "rect": {
+        "x": 40,
+        "y": 512,
+        "width": 100,
+        "height": 24
+      }
+    },
+    {
+      "ref": "qz-21",
+      "role": "cell",
+      "name": "13.00",
+      "value": "",
+      "visible": true,
+      "rect": {
+        "x": 160,
+        "y": 512,
+        "width": 80,
+        "height": 24
+      }
+    },
+    {
+      "ref": "qz-22",
+      "role": "cell",
+      "name": "800",
+      "value": "",
+      "visible": true,
+      "rect": {
+        "x": 260,
+        "y": 512,
+        "width": 80,
+        "height": 24
+      }
+    },
+    {
+      "ref": "qz-23",
+      "role": "img",
+      "name": "主图",
+      "value": "",
+      "visible": true,
+      "rect": {
+        "x": 420,
+        "y": 600,
+        "width": 800,
+        "height": 800
+      },
+      "url": "https://cbu01.alicdn.com/img/ibank/O1CN01main1.jpg"
+    },
+    {
+      "ref": "qz-24",
+      "role": "img",
+      "name": "主图",
+      "value": "",
+      "visible": true,
+      "rect": {
+        "x": 1240,
+        "y": 600,
+        "width": 800,
+        "height": 800
+      },
+      "url": "https://cbu01.alicdn.com/img/ibank/O1CN01main2.jpg"
+    },
+    {
+      "ref": "qz-25",
+      "role": "img",
+      "name": "主图",
+      "value": "",
+      "visible": true,
+      "rect": {
+        "x": 420,
+        "y": 1420,
+        "width": 800,
+        "height": 800
+      },
+      "url": "https://cbu01.alicdn.com/img/ibank/O1CN01main3.jpg"
+    },
+    {
+      "ref": "qz-26",
+      "role": "img",
+      "name": "细节图",
+      "value": "",
+      "visible": true,
+      "rect": {
+        "x": 1240,
+        "y": 1420,
+        "width": 750,
+        "height": 2000
+      },
+      "url": "https://cbu01.alicdn.com/img/ibank/O1CN01detail1.jpg"
+    },
+    {
+      "ref": "qz-27",
+      "role": "img",
+      "name": "细节图",
+      "value": "",
+      "visible": true,
+      "rect": {
+        "x": 420,
+        "y": 2240,
+        "width": 750,
+        "height": 2000
+      },
+      "url": "https://cbu01.alicdn.com/img/ibank/O1CN01detail2.jpg"
+    },
+    {
+      "ref": "qz-28",
+      "role": "img",
+      "name": "图标",
+      "value": "",
+      "visible": true,
+      "rect": {
+        "x": 40,
+        "y": 60,
+        "width": 60,
+        "height": 60
+      },
+      "url": "https://cbu01.alicdn.com/icon/credit.png"
+    },
+    {
+      "ref": "qz-999",
+      "role": "textbox",
+      "name": "",
+      "value": "secret-value",
+      "visible": false,
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      }
+    }
+  ]
+}
