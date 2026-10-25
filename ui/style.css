@@ -109,7 +109,27 @@ input[type="checkbox"] { accent-color: var(--brand); }
 .compare { display: grid; grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr); gap: 18px; }
 .compare > article { min-width: 0; }
 .compare h3 { margin-bottom: 10px; color: #3b4453; font-size: 13px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase; }
-.source { border-right: 1px solid var(--border); padding-right: 18px; }
+.source {
+  position: sticky;
+  top: 16px;
+  align-self: start;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-right: 1px solid var(--border);
+  padding-right: 18px;
+}
+.source::-webkit-scrollbar, .draft-list::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+.source::-webkit-scrollbar-thumb, .draft-list::-webkit-scrollbar-thumb {
+  background: var(--input-border);
+  border-radius: 999px;
+}
+.source::-webkit-scrollbar-track, .draft-list::-webkit-scrollbar-track {
+  background: transparent;
+}
 .source-title { margin-bottom: 10px; font-size: 14px; line-height: 1.6; }
 .facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 12px; margin: 0 0 12px; font-size: 12px; }
 .fact { display: grid; grid-template-columns: subgrid; grid-column: 1 / -1; align-items: baseline; }
@@ -180,6 +200,19 @@ td.supply { color: var(--brand); font-weight: 600; }
   .draft-list { flex-direction: row; flex-wrap: wrap; }
   .draft-item { width: auto; min-width: 168px; max-width: 240px; }
   .compare { grid-template-columns: 1fr; }
-  .source { border-right: 0; border-bottom: 1px solid var(--border); padding: 0 0 16px; }
+  .source { position: static; max-height: none; overflow-y: visible; border-right: 0; border-bottom: 1px solid var(--border); padding: 0 0 16px; }
   .settings-grid { grid-template-columns: 1fr; }
+}
+
+
+@media (min-width: 1400px) {
+  .app { max-width: 1440px; padding: 32px 36px 56px; }
+  .workspace { grid-template-columns: 260px minmax(0, 1fr); gap: 20px; }
+  .compare { grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.25fr); gap: 24px; }
+}
+
+@media (min-width: 1800px) {
+  .app { max-width: 1680px; padding: 36px 44px 64px; }
+  .workspace { grid-template-columns: 280px minmax(0, 1fr); gap: 24px; }
+  .compare { grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr); gap: 28px; }
 }
