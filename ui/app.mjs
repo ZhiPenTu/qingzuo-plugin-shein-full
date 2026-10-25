@@ -193,7 +193,7 @@ function renderSource(form) {
   $('source-attributes').replaceChildren(...(attributes.length
     ? attributes.map(item => el('div', { class: 'fact' }, el('dt', { text: item.name }), el('dd', { text: item.value })))
     : [el('div', { class: 'fact' }, el('dt', { text: '属性' }), el('dd', { text: '未识别' }))]));
-  $('source-attributes-wrap').open = attributes.length > 0 && attributes.length <= 8;
+  $('source-attributes-wrap').open = attributes.length > 0;
 
   const grid = $('source-images');
   grid.replaceChildren();
@@ -239,7 +239,7 @@ function renderAttributes(form) {
   attributes.forEach((attribute, index) => {
     const label = attribute.name?.en || attribute.name?.zh || '未命名属性';
     const row = el('div', { class: 'attribute-row' },
-      el('span', { class: 'attribute-name' + (attribute.required ? ' required' : ''), text: label + (attribute.required ? ' *' : '') })
+      el('span', { class: 'attribute-name' + (attribute.required ? ' required' : ''), text: label })
     );
     if (Array.isArray(attribute.values) && attribute.values.length) {
       const select = el('select', {});
