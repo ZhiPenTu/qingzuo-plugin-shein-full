@@ -20,13 +20,13 @@
 1. 用 `@commerce/plugin-sdk/cli` 的 `pack` 把 `ui/` 打成临时 `.ecplugin`，SDK 直接取安装依赖里的同一份。
 2. 用 `_electron.launch` 启动 `QINGZUO_DESKTOP_ROOT` 指向的底座，带上临时 `--user-data-dir`。
 3. 用 Chromium 的 `--host-resolver-rules` 把 `detail.1688.com` 指到本机 HTTPS 服务，证书是临时自签的，所以启动参数里有 `--ignore-certificate-errors`。
-4. 通过 `COMMERCE_TEST_NETWORK_ROUTES` 把四个平台主机（希音正式、希音测试、OpenAI、DeepSeek）重定向到本机 mock 网关。
-5. 在底座里导入插件、打开工具、填设置与密钥，再走完整流程。
+4. 通过 `COMMERCE_TEST_NETWORK_ROUTES` 把希音测试主机重定向到本机 mock 网关；AI 模型目录和补全由同一个 mock 网关的 `/v1/models` 与 `/v1/chat/completions` 提供。
+5. 在底座里导入插件、配置 mock AI、打开工具、填希音设置与密钥，再走完整流程。
 
 `COMMERCE_TEST_NETWORK_ROUTES` 的边界（底座侧实现，`desktop/network-test-routes.mjs`）：
 
 - 只在**非打包构建**生效，安装包里的宿主直接忽略这个变量。
-- 只能重定向固定的四个平台主机（希音正式、希音测试、OpenAI、DeepSeek），且目标必须是 `127.0.0.1`。
+- 只能重定向固定的平台主机（希音正式、希音测试、OpenAI、DeepSeek），且目标必须是 `127.0.0.1`。
 - 重定向发生在 `NetworkBroker` 完成 origin 授权之后，**不能绕过清单白名单**。
 - 重定向请求不带 Cookie 跨主机。
 

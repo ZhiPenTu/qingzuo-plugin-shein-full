@@ -80,6 +80,12 @@ test('1688 采集到希音提交：确认前零发品调用，签名与幂等键
     const status = await shell.evaluate(() => window.commerceDesktop.invoke('status'));
     expect(status.plugins.some(candidate => candidate.id === pkg.commerce.id)).toBe(true);
 
+    await shell.evaluate(origin => window.commerceDesktop.invoke('ai.configure', {
+      address: origin,
+      model: 'mock-translator',
+      apiKey: 'sk-e2e'
+    }), gateway.origin);
+
     await shell.getByRole('button', { name: '工具中心', exact: true }).click();
     await shell.locator('[data-slot="card"]')
       .filter({ has: shell.getByRole('heading', { name: pkg.commerce.title, exact: true }) })
@@ -89,14 +95,12 @@ test('1688 采集到希音提交：确认前零发品调用，签名与幂等键
     const plugin = app.context().pages().find(candidate => candidate.url().startsWith(prefix));
 
     await plugin.locator('#toggle-settings').click();
-    await plugin.locator('#provider').selectOption('openai');
     await plugin.locator('#base-url').selectOption('https://openapi-test01.sheincorp.cn');
     await plugin.locator('#open-key').fill(OPEN_KEY_ID);
+    await expect(plugin.locator('#model option[value="mock-translator"]')).toHaveCount(1);
+    await plugin.locator('#model').selectOption('mock-translator');
     await plugin.locator('#save-settings').click();
     await expect(plugin.locator('#settings-status')).toHaveText('设置已保存。');
-    await plugin.locator('#translation-key').fill('sk-e2e');
-    await plugin.locator('#save-translation').click();
-    await expect(plugin.locator('#translation-status')).toHaveText('已保存。');
     await plugin.locator('#secret-key').fill(SECRET_KEY);
     await plugin.locator('#save-secret').click();
     await expect(plugin.locator('#secret-status')).toHaveText('已保存。');

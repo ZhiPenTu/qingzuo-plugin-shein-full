@@ -13,22 +13,20 @@ test('插件清单通过底座的清单校验', () => {
   assert.equal(manifest.permissions.files, true);
 });
 
-test('只申请 1.3 新增能力所需的最小权限', () => {
+test('只申请 1.4 新增能力所需的最小权限', () => {
   const permissions = pkg.commerce.permissions;
-  assert.match(pkg.commerce.api, /\^1\.3\.0/);
+  assert.match(pkg.commerce.api, /\^1\.4\.0/);
   assert.deepEqual(permissions.browser, ['automate']);
   assert.ok(permissions.browserOrigins.includes('https://detail.1688.com'));
   for (const header of ['x-lt-openKeyId', 'x-lt-timestamp', 'x-lt-signature', 'Content-Type']) {
     assert.ok(permissions.networkHeaders.includes(header), '缺少请求头权限：' + header);
   }
-  for (const origin of ['https://openapi.sheincorp.com', 'https://openapi-test01.sheincorp.cn', 'https://api.openai.com', 'https://api.deepseek.com']) {
-    assert.ok(permissions.network.includes(origin), '缺少网络权限：' + origin);
-  }
+  assert.deepEqual(permissions.network, ['https://openapi.sheincorp.com', 'https://openapi-test01.sheincorp.cn']);
   // 声明的凭据必须都真的会被用到：openKeyId 不是密钥，存在设置里，不该占一个凭据槽。
-  assert.deepEqual(permissions.credentials, ['shein-secret-key', 'openai-api-key', 'deepseek-api-key']);
+  assert.deepEqual(permissions.credentials, ['shein-secret-key']);
   assert.ok(!permissions.browser.includes('download'));
-  // v1 保持商品原貌，不改图也不调用图像编辑，就不该申请 AI 权限。
-  assert.equal(permissions.ai, undefined);
+  // 翻译复用底座 AI 配置，图像处理保留底座图像编辑能力。
+  assert.deepEqual(permissions.ai, ['image-edit', 'text']);
   assert.equal(permissions.files, true);
 });
 

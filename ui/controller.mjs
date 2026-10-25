@@ -9,14 +9,13 @@ import {
 } from './shein-client.mjs';
 import { applyAttributeTemplate, parseAttributeTemplate } from './category.mjs';
 import { buildPublishPayload } from './shein-payload.mjs';
-import { PROVIDERS, providerOf, translateProduct } from './translate.mjs';
+import { translateProduct } from './translate.mjs';
 import { convertToJpeg, imageNeedsConversion, imageTypeFor, readImageSize, validateImage } from './images.mjs';
 
 export const DRAFTS_KEY = 'drafts';
 export const SETTINGS_KEY = 'settings';
 
 export const DEFAULT_SETTINGS = Object.freeze({
-  provider: 'openai',
   model: '',
   coefficient: 1.35,
   site: 'shein',
@@ -36,7 +35,6 @@ export function sourceUrlOf(value) {
 
 function mergeSettings(value) {
   const settings = { ...DEFAULT_SETTINGS, ...(value && typeof value === 'object' ? value : {}) };
-  if (!PROVIDERS[settings.provider]) settings.provider = DEFAULT_SETTINGS.provider;
   settings.coefficient = coefficientOf({ product: { coefficient: settings.coefficient } });
   if (!/^https:\/\//.test(settings.baseUrl)) settings.baseUrl = SHEIN_BASE_URL;
   return settings;
@@ -112,7 +110,7 @@ export function createController({ client, now = () => Date.now() }) {
   }
 
   async function setSecret(name, value) {
-    if (![SECRET_CREDENTIAL, 'openai-api-key', 'deepseek-api-key'].includes(name)) throw new Error('凭据名称无效。');
+    if (name !== SECRET_CREDENTIAL) throw new Error('凭据名称无效。');
     if (typeof value !== 'string' || !value.trim()) throw new Error('请填写密钥。');
     await client.credentials.set(name, value.trim());
     notify();
@@ -124,13 +122,15 @@ export function createController({ client, now = () => Date.now() }) {
   }
 
   async function credentialStatus() {
-    const provider = providerOf(state.settings.provider);
     return {
       sheinSecret: await client.credentials.status(SECRET_CREDENTIAL),
       openKeyId: Boolean(state.settings.openKeyId),
-      translation: await client.credentials.status(provider.credential),
-      providers: Object.values(PROVIDERS).map(item => item.title)
+      model: state.settings.model
     };
+  }
+
+  async function aiCatalog() {
+    return client.ai.textModels();
   }
 
   async function collect(link) {
@@ -149,14 +149,11 @@ export function createController({ client, now = () => Date.now() }) {
 
   async function translate(draftId) {
     const draft = find(draftId);
-    const provider = providerOf(state.settings.provider);
-    if (!(await client.credentials.status(provider.credential))) throw new Error('请先在设置中保存 ' + provider.title + ' 密钥。');
     const glossaryKey = 'glossary.' + (draft.product?.category?.sheinCategoryId || 'default');
     const glossary = await client.storage.get(glossaryKey);
     const translation = await translateProduct({
       client,
-      provider: state.settings.provider,
-      model: state.settings.model || provider.model,
+      model: state.settings.model,
       glossary: glossary && typeof glossary === 'object' ? glossary : {},
       input: {
         title: draft.source?.title ?? '',
@@ -352,7 +349,7 @@ export function createController({ client, now = () => Date.now() }) {
   }
 
   return Object.freeze({
-    load, saveSettings, setSecret, clearSecret, credentialStatus,
+    load, saveSettings, setSecret, clearSecret, credentialStatus, aiCatalog,
     collect, translate, prepareImages, loadTemplate, suggestCategory, ensureTab,
     saveDraft, submit, poll, remove, resume,
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },

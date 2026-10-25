@@ -1,15 +1,3 @@
-import { decodeBase64Utf8 } from './shein-client.mjs';
-
-export const PROVIDERS = Object.freeze({
-  openai: { id: 'openai', title: 'OpenAI', origin: 'https://api.openai.com', path: '/v1/chat/completions', model: 'gpt-4o-mini', credential: 'openai-api-key' },
-  deepseek: { id: 'deepseek', title: 'DeepSeek', origin: 'https://api.deepseek.com', path: '/chat/completions', model: 'deepseek-chat', credential: 'deepseek-api-key' }
-});
-
-export function providerOf(id) {
-  const provider = PROVIDERS[id] ?? PROVIDERS.openai;
-  return provider;
-}
-
 const SYSTEM_PROMPT = [
   '你是跨境电商商品本地化编辑，把中文 1688 商品信息写成地道的英文商品文案。',
   '只输出一个 JSON 对象，不要 Markdown、不要解释。JSON 结构：',
@@ -56,26 +44,12 @@ export function parseTranslationContent(content, input = {}) {
   return { title, bullets, description: text(value?.description).slice(0, 4000), attributes };
 }
 
-export async function translateProduct({ client, provider: providerId, model, input, glossary, temperature = 0.2 }) {
-  const provider = providerOf(providerId);
-  const body = {
-    model: text(model) || provider.model,
+export async function translateProduct({ client, model, input, glossary, temperature = 0.2 }) {
+  const response = await client.ai.complete({
+    ...(text(model) ? { model: text(model) } : {}),
     messages: buildMessages(input, glossary),
     temperature,
-    response_format: { type: 'json_object' }
-  };
-  const response = await client.network.request({
-    url: provider.origin + provider.path,
-    method: 'POST',
-    json: body,
-    credential: provider.credential
+    responseFormat: { type: 'json_object' }
   });
-  if (response.status === 401 || response.status === 403) throw new Error(provider.title + ' 密钥无效或未授权。');
-  if (response.status === 429) throw new Error(provider.title + ' 请求过于频繁，请稍后手动重试。');
-  if (response.status < 200 || response.status >= 300) throw new Error(provider.title + ' 翻译失败（' + response.status + '）。');
-  let payload;
-  try { payload = JSON.parse(decodeBase64Utf8(response.data)); } catch { throw new Error('翻译服务返回了无法解析的内容。'); }
-  const content = payload?.choices?.[0]?.message?.content;
-  if (!content) throw new Error('翻译服务没有返回内容。');
-  return parseTranslationContent(content, input);
+  return parseTranslationContent(response.content, input);
 }

@@ -2,7 +2,6 @@ import { createPluginClient } from './sdk.mjs';
 import { createController } from './controller.mjs';
 import { STATUS_LABEL, blockingIssues, validateDraft } from './store.mjs';
 import { ROLE_LABEL, validateImage } from './images.mjs';
-import { PROVIDERS } from './translate.mjs';
 import { supplyPrice } from './pricing.mjs';
 import { SECRET_CREDENTIAL } from './shein-client.mjs';
 
@@ -705,7 +704,6 @@ async function confirmSubmit() {
 
 function fillSettings() {
   const settings = controller.getState().settings;
-  $('provider').value = settings.provider;
   $('model').value = settings.model || '';
   $('default-coefficient').value = String(settings.coefficient ?? 1.35);
   $('site').value = settings.site || 'shein';
@@ -717,7 +715,6 @@ async function doSaveSettings() {
   await run('正在保存设置…', async () => {
     state.credentialRevision += 1;
     await controller.saveSettings({
-      provider: $('provider').value,
       model: $('model').value.trim(),
       coefficient: $('default-coefficient').value,
       site: $('site').value.trim() || 'shein',
@@ -732,30 +729,19 @@ async function doSaveSettings() {
   await renderCredentialStatus();
 }
 
-function translationCredential() {
-  return PROVIDERS[$('provider').value]?.credential ?? PROVIDERS.openai.credential;
-}
-
-async function doSaveTranslationKey() {
-  const value = $('translation-key').value.trim();
-  if (!value) {
-    setStatus('translation-status', '请先填写翻译密钥。', true);
-    return;
+async function loadModels() {
+  try {
+    const { models, defaultModel } = await controller.aiCatalog();
+    const select = $('model');
+    const current = controller.getState().settings.model || '';
+    while (select.options.length) select.remove(0);
+    select.append(new Option(defaultModel ? '默认模型（' + defaultModel + '）' : '默认模型', ''));
+    for (const model of models) select.append(new Option(model.title && model.title !== model.id ? model.title + '（' + model.id + '）' : model.id, model.id));
+    select.value = models.some(item => item.id === current) ? current : '';
+    setStatus('translation-status', '');
+  } catch (reason) {
+    setStatus('translation-status', reason instanceof Error ? reason.message : '模型列表暂时不可用。', true);
   }
-  await run('正在保存密钥…', async () => {
-    state.credentialRevision += 1;
-    await controller.setSecret(translationCredential(), value);
-    $('translation-key').value = '';
-    setStatus('translation-status', '已保存。');
-  }, 'translation-status');
-}
-
-async function doClearTranslationKey() {
-  await run('正在清除密钥…', async () => {
-    state.credentialRevision += 1;
-    await controller.clearSecret(translationCredential());
-    setStatus('translation-status', '已清除。');
-  }, 'translation-status');
 }
 
 async function doSaveSheinSecret() {
@@ -788,7 +774,6 @@ async function renderCredentialStatus() {
     // 用户刚看到的保存结果返回，不能让它把新状态覆盖回旧值。
     if (revision !== state.credentialRevision) return;
     setStatus('secret-status', status.sheinSecret ? 'secretKey 已保存。' : 'secretKey 未保存。');
-    setStatus('translation-status', status.translation ? '翻译密钥已保存。' : '翻译密钥未保存。');
   } catch {
     setStatus('secret-status', '凭据状态暂时不可用。', true);
   }
@@ -804,15 +789,14 @@ function bindEvents() {
     $('toggle-settings').textContent = state.settingsOpen ? '收起设置' : '设置';
     if (state.settingsOpen) {
       fillSettings();
+      void loadModels();
       void renderCredentialStatus();
     }
   });
   $('save-settings').addEventListener('click', () => void doSaveSettings());
   $('save-secret').addEventListener('click', () => void doSaveSheinSecret());
   $('clear-secret').addEventListener('click', () => void doClearSheinSecret());
-  $('save-translation').addEventListener('click', () => void doSaveTranslationKey());
-  $('clear-translation').addEventListener('click', () => void doClearTranslationKey());
-  $('provider').addEventListener('change', () => void renderCredentialStatus());
+  $('refresh-models').addEventListener('click', () => void loadModels());
 
   $('title-en').addEventListener('input', event => { state.form.product.title.en = event.target.value; markDirty(); });
   $('bullets').addEventListener('input', event => {

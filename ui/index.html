@@ -26,15 +26,14 @@
     </div>
     <div class="settings-grid">
       <div class="field">
-        <label for="provider">翻译服务</label>
-        <select id="provider">
-          <option value="openai">OpenAI</option>
-          <option value="deepseek">DeepSeek</option>
-        </select>
-      </div>
-      <div class="field">
-        <label for="model">模型</label>
-        <input id="model" type="text" placeholder="留空使用默认模型" autocomplete="off">
+        <label for="model">翻译模型</label>
+        <div class="row">
+          <select id="model">
+            <option value="">默认模型</option>
+          </select>
+          <button id="refresh-models" class="secondary small" type="button">刷新</button>
+        </div>
+        <p class="hint">模型来自轻作 AI 设置，无需单独配置密钥。</p>
       </div>
       <div class="field">
         <label for="default-coefficient">新草稿加价系数</label>
@@ -63,15 +62,6 @@
           <button id="clear-secret" class="secondary small" type="button">清除</button>
         </div>
         <p id="secret-status" class="hint" role="status"></p>
-      </div>
-      <div class="field">
-        <label for="translation-key">翻译密钥</label>
-        <div class="row">
-          <input id="translation-key" type="password" autocomplete="off" placeholder="所选翻译服务的 API 密钥">
-          <button id="save-translation" class="secondary small" type="button">保存</button>
-          <button id="clear-translation" class="secondary small" type="button">清除</button>
-        </div>
-        <p id="translation-status" class="hint" role="status"></p>
       </div>
     </div>
     <div class="actions">
