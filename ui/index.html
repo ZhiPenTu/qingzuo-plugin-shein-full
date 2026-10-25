@@ -122,62 +122,75 @@
 
         <article class="final">
           <h3>希音终稿</h3>
-          <div class="field">
-            <label for="title-en">英文标题</label>
-            <input id="title-en" type="text" maxlength="200" autocomplete="off">
-            <p id="title-zh" class="hint"></p>
-          </div>
-          <div class="field">
-            <label for="bullets">卖点（每行一条）</label>
-            <textarea id="bullets" rows="4"></textarea>
-          </div>
-          <div class="field">
-            <label for="description">英文描述</label>
-            <textarea id="description" rows="4"></textarea>
-          </div>
 
-          <div class="field">
-            <label>希音类目</label>
-            <div class="row">
-              <input id="category-id" type="text" inputmode="numeric" placeholder="末级类目 ID" autocomplete="off">
-              <input id="product-type-id" type="text" inputmode="numeric" placeholder="product_type_id" autocomplete="off">
-              <button id="load-template" class="secondary" type="button">读取属性模板</button>
+          <section class="section-card">
+            <h4 class="section-title">标题与卖点</h4>
+            <div class="field-grid-2">
+              <div class="field span-2">
+                <label for="title-en">英文标题</label>
+                <input id="title-en" type="text" maxlength="200" autocomplete="off">
+                <p id="title-zh" class="hint"></p>
+              </div>
+              <div class="field">
+                <label for="bullets">卖点（每行一条）</label>
+                <textarea id="bullets" rows="4"></textarea>
+              </div>
+              <div class="field">
+                <label for="description">英文描述</label>
+                <textarea id="description" rows="4"></textarea>
+              </div>
             </div>
-            <div class="row">
-              <button id="suggest-category" class="secondary small" type="button">推荐类目</button>
-              <label class="check"><input id="category-confirmed" type="checkbox"> 类目已确认</label>
-            </div>
-            <div id="category-suggestions" class="suggestions"></div>
-            <span id="category-hint" class="hint"></span>
-          </div>
+          </section>
 
-          <div id="attributes" class="attributes"></div>
+          <section class="section-card">
+            <h4 class="section-title">希音类目与属性</h4>
+            <div class="field">
+              <label>希音类目</label>
+              <div class="category-grid">
+                <input id="category-id" type="text" inputmode="numeric" placeholder="末级类目 ID" autocomplete="off">
+                <input id="product-type-id" type="text" inputmode="numeric" placeholder="product_type_id" autocomplete="off">
+                <button id="load-template" class="secondary" type="button">读取属性模板</button>
+              </div>
+              <div class="category-actions">
+                <button id="suggest-category" class="secondary small" type="button">推荐类目</button>
+                <label class="check"><input id="category-confirmed" type="checkbox"> 类目已确认</label>
+              </div>
+              <div id="category-suggestions" class="suggestions"></div>
+              <span id="category-hint" class="hint"></span>
+            </div>
 
-          <div class="field">
-            <label>商品图片</label>
-            <div id="image-list" class="image-list"></div>
-            <div class="row">
-              <button id="prepare-images" class="secondary" type="button">从 1688 转存图片</button>
-              <span id="image-hint" class="hint"></span>
-            </div>
-          </div>
+            <div id="attributes" class="attributes"></div>
+          </section>
 
-          <div class="field">
-            <label>SKU 与供货价</label>
-            <div class="row compact">
-              <span class="hint">加价系数</span>
-              <input id="coefficient" class="narrow" type="number" min="1.05" max="3" step="0.01">
-              <span id="coefficient-hint" class="hint"></span>
+          <section class="section-card">
+            <h4 class="section-title">商品图片</h4>
+            <div class="field">
+              <div id="image-list" class="image-list"></div>
+              <div class="row">
+                <button id="prepare-images" class="secondary" type="button">从 1688 转存图片</button>
+                <span id="image-hint" class="hint"></span>
+              </div>
             </div>
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr><th>1688 颜色</th><th>英文颜色</th><th>希音颜色值</th><th>1688 单价</th><th>供货价</th><th>供货 SKU</th><th>库存</th></tr>
-                </thead>
-                <tbody id="sku-body"></tbody>
-              </table>
+          </section>
+
+          <section class="section-card">
+            <h4 class="section-title">变体 SKU 与供货价</h4>
+            <div class="field">
+              <div class="row compact">
+                <span class="hint">加价系数</span>
+                <input id="coefficient" class="narrow" type="number" min="1.05" max="3" step="0.01">
+                <span id="coefficient-hint" class="hint"></span>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr><th>1688 颜色</th><th>英文颜色</th><th>希音颜色值</th><th>1688 单价</th><th>供货价</th><th>供货 SKU</th><th>库存</th></tr>
+                  </thead>
+                  <tbody id="sku-body"></tbody>
+                </table>
+              </div>
             </div>
-          </div>
+          </section>
         </article>
       </div>
 
