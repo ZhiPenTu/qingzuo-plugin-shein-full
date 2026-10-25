@@ -112,6 +112,11 @@ export async function startGateway() {
     const pathname = new URL(request.url, 'http://127.0.0.1').pathname;
     const body = await readBody(request);
     calls.push({ path: pathname, headers: { ...request.headers }, body });
+    if (pathname === '/v1/models') {
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ data: [{ id: 'mock-translator', display_name: 'Mock Translator' }] }));
+      return;
+    }
     if (pathname === '/v1/chat/completions') {
       response.writeHead(200, { 'content-type': 'application/json' });
       response.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(TRANSLATION) } }] }));
@@ -138,8 +143,7 @@ export async function startGateway() {
     calls,
     origin,
     routes: {
-      'https://openapi-test01.sheincorp.cn': origin,
-      'https://api.openai.com': origin
+      'https://openapi-test01.sheincorp.cn': origin
     },
     sheet: () => calls.filter(call => call.path.startsWith('/open-api/')),
     submissions: () => calls.filter(call => SUBMISSION_PATHS.has(call.path)),

@@ -32,7 +32,7 @@ async function readyController(overrides = {}) {
   const fake = createFakeClient({ snapshot, respond: routeOverrides(overrides) });
   const controller = createController({ client: fake.client, now: () => 1760000000000 });
   await controller.load();
-  await controller.saveSettings({ openKeyId: 'KEYID', provider: 'openai' });
+  await controller.saveSettings({ openKeyId: 'KEYID' });
   await controller.setSecret('shein-secret-key', 'secret-value');
   return { ...fake, controller };
 }

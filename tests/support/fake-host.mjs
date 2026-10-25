@@ -16,12 +16,19 @@ export function businessError(code, msg) {
 
 // 最小可用的插件宿主替身：存储、凭据、浏览器和网络都记录调用，方便断言
 // “没点确认就绝不发品”这类安全约定。
-export function createFakeClient({ snapshot, resource = { data: PNG_1X1, mime: 'image/png', name: 'main.png' }, respond } = {}) {
+export function createFakeClient({ snapshot, resource = { data: PNG_1X1, mime: 'image/png', name: 'main.png' }, respond, translation } = {}) {
   const storage = new Map();
   const files = new Map();
   const secrets = new Map();
   const tabs = [];
-  const calls = { browser: [], network: [], storage: [], credentials: [], resources: [] };
+  const calls = { ai: [], browser: [], network: [], storage: [], credentials: [], resources: [] };
+  const translated = {
+    title: 'Mock translated title',
+    bullets: ['Mock benefit one', 'Mock benefit two'],
+    description: 'Mock description.',
+    attributes: [{ name: '材质', value: 'Cotton' }],
+    ...translation
+  };
   let sequence = 0;
 
   async function createFile({ data, filename, mime }) {
@@ -95,6 +102,16 @@ export function createFakeClient({ snapshot, resource = { data: PNG_1X1, mime: '
         calls.network.push(options);
         if (!respond) throw new Error('未预期的网络请求：' + options.url);
         return respond(options);
+      }
+    },
+    ai: {
+      async textModels() {
+        calls.ai.push(['textModels']);
+        return { models: [{ id: 'mock-translator', title: 'Mock Translator' }], defaultModel: 'mock-translator' };
+      },
+      async complete(options) {
+        calls.ai.push(['complete', options]);
+        return { content: JSON.stringify(translated), model: options.model || 'mock-translator' };
       }
     }
   };

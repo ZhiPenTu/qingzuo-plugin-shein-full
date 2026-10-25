@@ -27,7 +27,7 @@
 ## 开发与验证
 
 ```sh
-npm install                    # vendor/commerce-plugin-sdk-1.3.0.tgz 提供 SDK
+npm install                    # vendor/commerce-plugin-sdk-1.4.0.tgz 提供 SDK
 npm test                       # 单元测试（node --test）
 QINGZUO_DESKTOP_ROOT=/path/to/qingzuo-desktop npm run test:e2e
 npm run pack
