@@ -1,6 +1,6 @@
 {
   "name": "@commerce/plugin-shein-full",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "type": "module",
   "commerce": {
@@ -11,7 +11,7 @@
     "category": "电商工具",
     "api": "^1.4.0",
     "ui": "ui/index.html",
-    "releaseNotes": "新增底座 AI 文本翻译：模型列表来自轻作 AI 设置，不再单独配置翻译服务或密钥。",
+    "releaseNotes": "重新整理了商品终稿页排版：标题与卖点、类目与属性、图片和 SKU 分区展示，大屏下核对更清楚。",
     "permissions": {
       "files": true,
       "storage": true,
