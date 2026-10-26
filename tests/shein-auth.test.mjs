@@ -53,8 +53,8 @@ test('授权链接带上应用的 appid、回调地址与本次授权的 state',
   const address = new URL(authorizationUrl({ appId: '10ADAABD6E000B247A428884951B4', baseUrl: 'https://openapi.sheincorp.com', state: 'qz-1', callbackUrl }));
   assert.equal(address.origin, 'https://openapi-sem.sheincorp.com');
   assert.equal(address.pathname, '/');
-  assert.equal(address.hash, '#/empower');
-  const params = address.searchParams;
+  assert.equal(address.hash, `#/empower?appid=10ADAABD6E000B247A428884951B4&redirectUrl=${encodeURIComponent(btoa(callbackUrl))}&state=qz-1`);
+  const params = new URLSearchParams(address.hash.slice(address.hash.indexOf('?') + 1));
   assert.equal(params.get('appid'), '10ADAABD6E000B247A428884951B4');
   assert.equal(params.get('state'), 'qz-1');
   assert.equal(atob(params.get('redirectUrl')), 'https://openapi.sheincorp.com/plugin/callback?from=qingzuo');
