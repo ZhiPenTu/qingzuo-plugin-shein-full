@@ -4,9 +4,10 @@ import {
   setImages, skuSupplyPriceOf, submissionKey, transition, upsertDraft, validateDraft
 } from './store.mjs';
 import {
-  createSheinClient, parseDocumentState, parsePermission, parsePublishResult, parseQuota, parseRepeated,
-  parseFillInStandard, parseUploadedUrl, SECRET_CREDENTIAL, SHEIN_BASE_URL
+  APP_SECRET_CREDENTIAL, authorizeWithTempToken, createSheinClient, parseDocumentState, parsePermission,
+  parsePublishResult, parseQuota, parseRepeated, parseFillInStandard, parseUploadedUrl, SECRET_CREDENTIAL, SHEIN_BASE_URL
 } from './shein-client.mjs';
+import { authorizationUrl, authorizeOriginOf, callbackUrlOf, createAuthorizationState, decryptSecretKey, readAuthorizationCallback } from './shein-auth.mjs';
 import { applyAttributeTemplate, parseAttributeTemplate } from './category.mjs';
 import { buildPublishPayload } from './shein-payload.mjs';
 import { translateProduct } from './translate.mjs';
@@ -14,12 +15,15 @@ import { convertToJpeg, imageNeedsConversion, imageTypeFor, readImageSize, valid
 
 export const DRAFTS_KEY = 'drafts';
 export const SETTINGS_KEY = 'settings';
+export const AUTH_TIMEOUT_MS = 600000;
+const AUTH_POLL_MS = 300;
 
 export const DEFAULT_SETTINGS = Object.freeze({
   model: '',
   coefficient: 1.35,
   site: 'shein',
   baseUrl: SHEIN_BASE_URL,
+  appId: '',
   openKeyId: ''
 });
 
@@ -48,7 +52,7 @@ function mergeConfig(draft, patch) {
   return next;
 }
 
-export function createController({ client, now = () => Date.now() }) {
+export function createController({ client, now = () => Date.now(), sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
   const state = { settings: { ...DEFAULT_SETTINGS }, drafts: [], tabId: null, loaded: false };
   const listeners = new Set();
   const notify = () => { for (const listener of listeners) { try { listener(); } catch {} } };
@@ -68,8 +72,7 @@ export function createController({ client, now = () => Date.now() }) {
 
   async function ensureCredentials() {
     const settings = state.settings;
-    if (!settings.openKeyId) throw new Error('请先在设置中填写希音 openKeyId。');
-    if (!(await client.credentials.status(SECRET_CREDENTIAL))) throw new Error('请先在设置中保存希音 secretKey。');
+    if (!settings.openKeyId || !(await client.credentials.status(SECRET_CREDENTIAL))) throw new Error('请先在设置中连接希音店铺。');
     return createSheinClient({ client, openKeyId: settings.openKeyId, baseUrl: settings.baseUrl, now });
   }
 
@@ -121,9 +124,70 @@ export function createController({ client, now = () => Date.now() }) {
     notify();
   }
 
+  // 应用授权：APP_ID + APP_SecretKey 只用来换店铺凭据，换到的 secretKey 解密后
+  // 才用于业务接口签名。任何一步失败都不写半套凭据，避免界面上出现「已连接」但签不了名。
+  function appCredentials(appId, appSecretKey) {
+    const appIdValue = typeof appId === 'string' ? appId.trim() : '';
+    const appSecret = typeof appSecretKey === 'string' ? appSecretKey.trim() : '';
+    if (!appIdValue) throw new Error('请先填写希音 APP_ID。');
+    if (!appSecret) throw new Error('请填写希音 APP_SecretKey。');
+    return { appIdValue, appSecret };
+  }
+
+  // 打开希音授权页：回调地址由插件按当前环境生成，授权结果在同一标签页里读回。
+  async function startAuthorization({ appId, appSecretKey, baseUrl }) {
+    const { appIdValue, appSecret } = appCredentials(appId, appSecretKey);
+    state.settings = mergeSettings({ ...state.settings, appId: appIdValue, baseUrl: baseUrl ?? state.settings.baseUrl });
+    await client.storage.set(SETTINGS_KEY, state.settings);
+    await client.credentials.set(APP_SECRET_CREDENTIAL, appSecret);
+    const callbackUrl = callbackUrlOf(state.settings.baseUrl);
+    const nonce = createAuthorizationState();
+    const address = authorizationUrl({ appId: appIdValue, baseUrl: state.settings.baseUrl, state: nonce, callbackUrl });
+    const tab = await client.browser.open(address);
+    notify();
+    return { tabId: tab.tabId, state: nonce, callbackUrl, authorizeUrl: address };
+  }
+
+  // 等商家在授权页点完确认：逐次读回标签页地址，只有 state 对得上的回调才算数。
+  async function awaitAuthorization({ tabId, state: expected, timeoutMs = AUTH_TIMEOUT_MS, intervalMs = AUTH_POLL_MS, isCancelled }) {
+    const interval = Math.max(1, Number(intervalMs) || AUTH_POLL_MS);
+    const attempts = Math.max(1, Math.ceil(Math.max(1, Number(timeoutMs) || AUTH_TIMEOUT_MS) / interval));
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      if (isCancelled?.()) throw new Error('已取消希音授权。');
+      const status = await client.browser.status();
+      const tab = (status?.tabs ?? []).find(item => item?.id === tabId);
+      const captured = readAuthorizationCallback(tab?.url, expected);
+      if (captured) return captured;
+      await sleep(interval);
+    }
+    throw new Error('等待希音授权超时，请重新连接。');
+  }
+
+  // 授权结束后把标签页收回授权站点首页，免得商家对着一个没有内容的回调页。
+  async function resetAuthorizationTab() {
+    try { await client.browser.open(authorizeOriginOf(state.settings.baseUrl) + '/'); } catch {}
+  }
+
+  async function authorize({ appId, appSecretKey, tempToken, baseUrl }) {
+    const { appIdValue, appSecret } = appCredentials(appId, appSecretKey);
+    if (!String(tempToken ?? '').trim()) throw new Error('希音授权没有返回临时授权码，请重新连接。');
+    // 换密钥要跟着界面上选的环境走，否则选了测试环境却把授权码发到正式环境。
+    state.settings = mergeSettings({ ...state.settings, appId: appIdValue, baseUrl: baseUrl ?? state.settings.baseUrl });
+    await client.storage.set(SETTINGS_KEY, state.settings);
+    await client.credentials.set(APP_SECRET_CREDENTIAL, appSecret);
+    const info = await authorizeWithTempToken({ client, appId: appIdValue, tempToken, baseUrl: state.settings.baseUrl, now });
+    const secretKey = await decryptSecretKey(info.secretKey, appSecret);
+    state.settings = mergeSettings({ ...state.settings, openKeyId: info.openKeyId });
+    await client.storage.set(SETTINGS_KEY, state.settings);
+    await client.credentials.set(SECRET_CREDENTIAL, secretKey);
+    notify();
+    return { openKeyId: info.openKeyId, supplierId: info.supplierId };
+  }
+
   async function credentialStatus() {
     return {
       sheinSecret: await client.credentials.status(SECRET_CREDENTIAL),
+      appSecret: await client.credentials.status(APP_SECRET_CREDENTIAL),
       openKeyId: Boolean(state.settings.openKeyId),
       model: state.settings.model
     };
@@ -349,7 +413,7 @@ export function createController({ client, now = () => Date.now() }) {
   }
 
   return Object.freeze({
-    load, saveSettings, setSecret, clearSecret, credentialStatus, aiCatalog,
+    load, saveSettings, setSecret, clearSecret, startAuthorization, awaitAuthorization, resetAuthorizationTab, authorize, credentialStatus, aiCatalog,
     collect, translate, prepareImages, loadTemplate, suggestCategory, ensureTab,
     saveDraft, submit, poll, remove, resume,
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },

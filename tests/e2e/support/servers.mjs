@@ -1,11 +1,25 @@
 import { createServer as createHttpsServer } from 'node:https';
 import { createServer as createHttpServer } from 'node:http';
+import { createCipheriv } from 'node:crypto';
 import { pngBytes } from './png.mjs';
 
 export const OFFER_PATH = '/offer/826500000001.html';
 export const OFFER_URL = 'https://detail.1688.com' + OFFER_PATH;
 export const OPEN_KEY_ID = 'E2E-OPEN-KEY';
 export const SECRET_KEY = 'E2E-SECRET-KEY';
+export const APP_ID = 'E2E-APP-ID';
+export const APP_SECRET = 'E2E-APP-SECRET-0123456789ABCDEF';
+export const TEMP_TOKEN = 'E2E-TEMP-TOKEN';
+// 授权页与回调地址都在希音的授权域名下，端到端里同样靠主机映射指到本机。
+export const AUTHORIZE_HOST = 'openapi-test01.sheincorp.cn';
+
+// 希音把店铺 secretKey 用 APP_SecretKey 前 16 字节做 AES-128-CBC 加密后下发。
+function encryptedStoreSecret() {
+  const key = Buffer.from(APP_SECRET, 'utf8').subarray(0, 16);
+  const cipher = createCipheriv('aes-128-cbc', key, Buffer.from('space-station-de', 'utf8'));
+  return Buffer.concat([cipher.update(SECRET_KEY, 'utf8'), cipher.final()]).toString('base64');
+}
+
 export const TRANSLATION = Object.freeze({
   title: 'Cotton Knit Scarf Winter Warm Couple Style',
   bullets: ['Soft cotton knit for daily wear', 'Warm double-layer texture', 'Unisex styling for couples'],
@@ -49,12 +63,36 @@ table{border-collapse:collapse;margin:12px 0}td,th{border:1px solid #ccc;padding
 <div><img src="/detail.png" alt="详情图" style="width:900px;height:600px"></div>
 </body></html>`;
 
-// 1688 页面用真实域名提供：测试靠 Chromium 的主机映射把它指到本机 HTTPS 服务。
+const AUTHORIZE_PAGE = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>希音授权</title></head>
+<body><p>正在完成店铺授权…</p>
+<script>
+const query = new URLSearchParams((location.hash.split('?')[1] || ''));
+const redirect = query.get('redirectUrl');
+const state = query.get('state') || '';
+// 授权页把 appid 与回调地址原样带回来，测试才能在服务端看到这次授权用了什么参数。
+if (redirect) location.replace(atob(redirect) + '&tempToken=${TEMP_TOKEN}&state=' + encodeURIComponent(state) +
+  '&appid=' + encodeURIComponent(query.get('appid') || '') + '&redirect=' + encodeURIComponent(redirect));
+</script></body></html>`;
+
+const CALLBACK_PAGE = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>授权完成</title></head>
+<body><p>授权已完成，可以回到轻作。</p></body></html>`;
+
+// 1688 页面与希音授权页都用真实域名提供：测试靠 Chromium 的主机映射把它们指到本机 HTTPS 服务。
 export async function startStorefront({ key, cert }) {
   const main = pngBytes(1000, 1000);
   const detail = pngBytes(900, 600, [206, 180, 150]);
+  const hits = [];
   const server = createHttpsServer({ key, cert }, (request, response) => {
-    const pathname = new URL(request.url, 'https://detail.1688.com').pathname;
+    const host = String(request.headers.host || '').split(':')[0];
+    const address = new URL(request.url, 'https://' + (host || AUTHORIZE_HOST));
+    const pathname = address.pathname;
+    // 授权链接的参数在 hash 里，浏览器不会发给服务端，所以只看查询串。
+    hits.push({ host, path: pathname, url: request.url, query: Object.fromEntries(address.searchParams) });
+    if (host === AUTHORIZE_HOST) {
+      response.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+      response.end(address.searchParams.has('tempToken') ? CALLBACK_PAGE : AUTHORIZE_PAGE);
+      return;
+    }
     if (pathname === '/main.png' || pathname === '/detail.png') {
       const body = pathname === '/main.png' ? main : detail;
       response.writeHead(200, { 'content-type': 'image/png', 'content-length': String(body.length), 'cache-control': 'no-store' });
@@ -70,7 +108,7 @@ export async function startStorefront({ key, cert }) {
     response.end('not found');
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  return { server, port: server.address().port, close: () => new Promise(resolve => { server.closeAllConnections(); server.close(resolve); }) };
+  return { server, hits, port: server.address().port, close: () => new Promise(resolve => { server.closeAllConnections(); server.close(resolve); }) };
 }
 
 const TEMPLATE = {
@@ -87,6 +125,7 @@ const TEMPLATE = {
 };
 
 const RESPONSES = {
+  '/open-api/auth/get-by-token': { openKeyId: OPEN_KEY_ID, secretKey: encryptedStoreSecret(), supplierId: 9001 },
   '/open-api/goods/product/check-supplierSku-repeated': { repeated_supplier_sku_list: [] },
   '/open-api/goods/product/check-publish-permission': { can_publish: true },
   '/open-api/goods-publish-quotas/detail': { remaining_quota: 50, total_quota: 100 },

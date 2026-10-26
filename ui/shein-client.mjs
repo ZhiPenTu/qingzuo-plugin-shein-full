@@ -3,8 +3,13 @@ import { buildSignMessage, composeSignature, randomKey, signHeaders, signJsonHea
 export const SHEIN_BASE_URL = 'https://openapi.sheincorp.com';
 export const SHEIN_TEST_BASE_URL = 'https://openapi-test01.sheincorp.cn';
 export const SECRET_CREDENTIAL = 'shein-secret-key';
+export const APP_SECRET_CREDENTIAL = 'shein-app-secret';
+
+// 换取店铺凭据时签名用的是应用身份：APP_ID 顶替 openKeyId，请求头也换成 x-lt-appid。
+export const APP_SIGN_HEADERS = Object.freeze({ appId: 'x-lt-appid', timestamp: 'x-lt-timestamp', signature: 'x-lt-signature' });
 
 export const PATHS = Object.freeze({
+  authorize: '/open-api/auth/get-by-token',
   publishPermission: '/open-api/goods/product/check-publish-permission',
   fillInStandard: '/open-api/goods/query-publish-fill-in-standard',
   categoryTree: '/open-api/goods/query-category-tree',
@@ -35,7 +40,7 @@ export class SheinError extends Error {
 
 export function parseEnvelope(response) {
   if (!response || typeof response.status !== 'number') throw new SheinError('希音接口没有返回结果。');
-  if (response.status === 401 || response.status === 403) throw new SheinError('希音凭据无效或未授权，请检查 openKeyId 与 secretKey。', String(response.status));
+  if (response.status === 401 || response.status === 403) throw new SheinError('希音凭据无效或未授权，请在设置中重新连接。', String(response.status));
   if (response.status === 429) throw new SheinError('希音接口请求过于频繁，请稍后手动重试。', '429');
   if (response.status >= 500) throw new SheinError('希音服务暂时不可用（' + response.status + '）。', String(response.status));
   if (response.status < 200 || response.status >= 300) throw new SheinError('希音接口调用失败（' + response.status + '）。', String(response.status));
@@ -49,7 +54,7 @@ export function parseEnvelope(response) {
 
 export function createSheinClient({ client, openKeyId, baseUrl = SHEIN_BASE_URL, now = () => Date.now() }) {
   const keyId = typeof openKeyId === 'string' ? openKeyId.trim() : '';
-  if (!keyId) throw new SheinError('请先配置希音 openKeyId。');
+  if (!keyId) throw new SheinError('请先在设置中连接希音店铺。');
   const origin = String(baseUrl).replace(/\/+$/, '');
 
   async function post(path, body, { multipart } = {}) {
@@ -81,6 +86,43 @@ export function createSheinClient({ client, openKeyId, baseUrl = SHEIN_BASE_URL,
     queryDocumentState: body => post(PATHS.documentState, body),
     quota: () => post(PATHS.quota, {})
   });
+}
+
+export function parseAuthorization(info) {
+  if (!info || typeof info !== 'object') throw new SheinError('希音授权没有返回内容，请重新授权。');
+  const openKeyId = String(info.openKeyId ?? info.open_key_id ?? '').trim();
+  const secretKey = String(info.secretKey ?? info.secret_key ?? '').trim();
+  if (!openKeyId || !secretKey) throw new SheinError('希音授权没有返回店铺凭据，请重新授权。');
+  const supplierId = Number(info.supplierId ?? info.supplier_id ?? 0);
+  return { openKeyId, secretKey, supplierId: Number.isFinite(supplierId) && supplierId > 0 ? supplierId : null };
+}
+
+// 用应用的 APP_ID + APP_SecretKey 签名，把授权页返回的 tempToken 换成店铺
+// openKeyId 与加密的 secretKey；调用方负责用 APP_SecretKey 解密后再保存。
+export async function authorizeWithTempToken({ client, appId, tempToken, baseUrl = SHEIN_BASE_URL, now = () => Date.now() }) {
+  const appIdValue = typeof appId === 'string' ? appId.trim() : '';
+  if (!appIdValue) throw new SheinError('请先填写希音 APP_ID。');
+  const token = typeof tempToken === 'string' ? tempToken.trim() : '';
+  if (!token) throw new SheinError('希音授权没有返回临时授权码，请重新连接。');
+  const origin = String(baseUrl).replace(/\/+$/, '');
+  const timestamp = String(now());
+  const random = randomKey(5);
+  const message = buildSignMessage({ openKeyId: appIdValue, timestamp, path: PATHS.authorize });
+  const signed = await client.network.sign({ credential: APP_SECRET_CREDENTIAL, algorithm: 'hmac-sha256', message, keySuffix: random });
+  const signature = composeSignature(random, signed.digest);
+  const info = parseEnvelope(await client.network.request({
+    url: origin + PATHS.authorize,
+    method: 'POST',
+    headers: {
+      language: 'zh-cn',
+      [APP_SIGN_HEADERS.appId]: appIdValue,
+      [APP_SIGN_HEADERS.timestamp]: timestamp,
+      [APP_SIGN_HEADERS.signature]: signature,
+      'Content-Type': 'application/json;charset=UTF-8'
+    },
+    json: { tempToken: token }
+  }));
+  return parseAuthorization(info);
 }
 
 export function parsePermission(info) {

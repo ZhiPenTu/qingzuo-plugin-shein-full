@@ -1,11 +1,22 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { createCipheriv } from 'node:crypto';
 import { createController } from '../ui/controller.mjs';
 import { createFakeClient, ok, businessError } from './support/fake-host.mjs';
 
 const snapshot = JSON.parse(await readFile(new URL('./fixtures/1688-detail-snapshot.json', import.meta.url), 'utf8'));
 const SOURCE = 'https://detail.1688.com/offer/826500000001.html';
+
+const APP_ID = '10ADAABD6E000B247A428884951B4';
+const APP_SECRET = '50CBFA17A9C3423EB14608B481DF364F';
+
+// 希音把店铺 secretKey 用 APP_SecretKey 前 16 字节做 AES-128-CBC 加密后下发。
+function encryptSecret(text, appSecretKey = APP_SECRET) {
+  const key = Buffer.from(appSecretKey, 'utf8').subarray(0, 16);
+  const cipher = createCipheriv('aes-128-cbc', key, Buffer.from('space-station-de', 'utf8'));
+  return Buffer.concat([cipher.update(text, 'utf8'), cipher.final()]).toString('base64');
+}
 
 const ROUTES = {
   '/open-api/goods/product/check-supplierSku-repeated': () => ok({ repeated_supplier_sku_list: [] }),
@@ -170,4 +181,111 @@ test('驳回后保存草稿不会自动回到待审核', async () => {
   assert.equal(saved.status, 'rejected');
   const resumed = await controller.resume(draft.id);
   assert.equal(resumed.status, 'review');
+});
+
+test('用 APP_ID 与 APP_SecretKey 换取店铺凭据后即可直接发品', async () => {
+  const fake = createFakeClient({
+    snapshot,
+    respond: routeOverrides({
+      '/open-api/auth/get-by-token': () => ok({ openKeyId: 'STORE-KEY', secretKey: encryptSecret('store-secret'), supplierId: 7788 })
+    })
+  });
+  const controller = createController({ client: fake.client, now: () => 1760000000000, sleep: async () => {} });
+  await controller.load();
+
+  // 授权页与回调地址都由插件自己生成，商家在内嵌浏览器里确认后由插件读回 tempToken。
+  const started = await controller.startAuthorization({
+    appId: APP_ID, appSecretKey: APP_SECRET, baseUrl: 'https://openapi-test01.sheincorp.cn'
+  });
+  assert.equal(started.callbackUrl, 'https://openapi-test01.sheincorp.cn/plugin/callback?from=qingzuo');
+  const address = new URL(started.authorizeUrl);
+  assert.equal(address.origin, 'https://openapi-test01.sheincorp.cn');
+  assert.ok(address.hash.startsWith('#/empower?'), address.hash);
+  const params = new URLSearchParams(address.hash.split('?')[1]);
+  assert.equal(params.get('appid'), APP_ID);
+  assert.equal(atob(params.get('redirectUrl')), started.callbackUrl);
+  assert.equal(params.get('state'), started.state);
+  assert.deepEqual(fake.calls.browser.find(call => call[0] === 'open'), ['open', started.authorizeUrl]);
+  assert.equal(fake.secrets.get('shein-app-secret'), APP_SECRET);
+
+  fake.tabs.find(item => item.id === started.tabId).url = started.callbackUrl + '&tempToken=TMP-TOKEN&state=' + started.state;
+  const captured = await controller.awaitAuthorization({ tabId: started.tabId, state: started.state, intervalMs: 1, timeoutMs: 50 });
+  assert.deepEqual(captured, { tempToken: 'TMP-TOKEN', state: started.state });
+
+  const result = await controller.authorize({
+    appId: APP_ID, appSecretKey: APP_SECRET, tempToken: captured.tempToken, baseUrl: 'https://openapi-test01.sheincorp.cn'
+  });
+
+  assert.deepEqual(result, { openKeyId: 'STORE-KEY', supplierId: 7788 });
+  assert.equal(controller.getState().settings.appId, APP_ID);
+  assert.equal(controller.getState().settings.openKeyId, 'STORE-KEY');
+  assert.equal(controller.getState().settings.baseUrl, 'https://openapi-test01.sheincorp.cn');
+  assert.equal(fake.secrets.get('shein-app-secret'), APP_SECRET);
+  assert.equal(fake.secrets.get('shein-secret-key'), 'store-secret');
+  assert.equal((await controller.credentialStatus()).sheinSecret, true);
+
+  const exchange = fake.calls.network.at(-1);
+  assert.equal(exchange.url, 'https://openapi-test01.sheincorp.cn/open-api/auth/get-by-token');
+  assert.equal(exchange.headers['x-lt-appid'], APP_ID);
+  assert.deepEqual(exchange.json, { tempToken: 'TMP-TOKEN' });
+
+  // 换到的 openKeyId / secretKey 直接用于业务接口，不再需要单独的 openKeyId 配置。
+  const draft = await collected(controller);
+  const submitted = await controller.submit(draft.id, { confirm: true });
+  assert.equal(submitted.status, 'submitted');
+  const publishCall = fake.calls.network.filter(call => call.url.endsWith('/open-api/goods/product/publishOrEdit')).at(-1);
+  assert.equal(publishCall.headers['x-lt-openKeyId'], 'STORE-KEY');
+});
+
+test('回调的 state 与本次授权对不上时不会拿去换密钥', async () => {
+  const fake = createFakeClient({ snapshot, respond: routeOverrides() });
+  const controller = createController({ client: fake.client, now: () => 1760000000000, sleep: async () => {} });
+  await controller.load();
+  const started = await controller.startAuthorization({
+    appId: APP_ID, appSecretKey: APP_SECRET, baseUrl: 'https://openapi-test01.sheincorp.cn'
+  });
+  fake.tabs.find(item => item.id === started.tabId).url = started.callbackUrl + '&tempToken=OTHER-TOKEN&state=qz-older';
+  await assert.rejects(
+    () => controller.awaitAuthorization({ tabId: started.tabId, state: started.state, intervalMs: 1, timeoutMs: 5 }),
+    /超时/
+  );
+  assert.equal(fake.calls.network.length, 0);
+});
+
+test('商家放弃授权时可以取消等待', async () => {
+  const fake = createFakeClient({ snapshot, respond: routeOverrides() });
+  const controller = createController({ client: fake.client, now: () => 1760000000000, sleep: async () => {} });
+  await controller.load();
+  const started = await controller.startAuthorization({
+    appId: APP_ID, appSecretKey: APP_SECRET, baseUrl: 'https://openapi-test01.sheincorp.cn'
+  });
+  await assert.rejects(
+    () => controller.awaitAuthorization({ tabId: started.tabId, state: started.state, intervalMs: 1, timeoutMs: 50, isCancelled: () => true }),
+    /已取消/
+  );
+  assert.equal(fake.calls.network.length, 0);
+});
+
+test('授权失败时不会留下半套店铺凭据', async () => {
+  const fake = createFakeClient({
+    snapshot,
+    respond: routeOverrides({
+      '/open-api/auth/get-by-token': () => ok({ openKeyId: 'STORE-KEY', secretKey: encryptSecret('store-secret', 'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF') })
+    })
+  });
+  const controller = createController({ client: fake.client, now: () => 1760000000000 });
+  await controller.load();
+  await assert.rejects(() => controller.authorize({ appId: APP_ID, appSecretKey: APP_SECRET, tempToken: 'TMP-TOKEN' }), /无法解密/);
+  assert.equal(controller.getState().settings.openKeyId, '');
+  assert.equal((await controller.credentialStatus()).sheinSecret, false);
+  await assert.rejects(() => controller.submit('missing', { confirm: true }), /草稿不存在/);
+});
+
+test('未连接希音时提交提示先完成授权', async () => {
+  const fake = createFakeClient({ snapshot, respond: routeOverrides() });
+  const controller = createController({ client: fake.client, now: () => 1760000000000 });
+  await controller.load();
+  const draft = await collected(controller);
+  await assert.rejects(() => controller.submit(draft.id, { confirm: true }), /连接希音/);
+  assert.equal(fake.calls.network.length, 0);
 });

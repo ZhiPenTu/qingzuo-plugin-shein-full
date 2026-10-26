@@ -4,6 +4,7 @@ import { STATUS_LABEL, blockingIssues, validateDraft } from './store.mjs';
 import { ROLE_LABEL, validateImage } from './images.mjs';
 import { supplyPrice } from './pricing.mjs';
 import { SECRET_CREDENTIAL } from './shein-client.mjs';
+import { callbackUrlOf } from './shein-auth.mjs';
 
 const client = createPluginClient();
 const controller = createController({ client });
@@ -21,8 +22,14 @@ const state = {
   imageUrls: new Map(),
   suggestions: [],
   settingsOpen: false,
-  credentialRevision: 0
+  credentialRevision: 0,
+  authCancelled: false
 };
+
+// APP_SecretKey 只在换取店铺凭据时需要明文：签名走主进程里的凭据，
+// 解密希音下发的 secretKey 需要原值。输入框在成功后清空，本次会话内改用内存副本，
+// 这样重新授权时不用反复填密钥。
+let appSecretValue = '';
 
 const clone = value => JSON.parse(JSON.stringify(value ?? null));
 
@@ -478,14 +485,16 @@ function markDirty() {
 }
 
 async function run(label, task, statusId = 'action-status') {
-  if (state.busy) return;
+  if (state.busy) return false;
   state.busy = true;
   setStatus(statusId, label);
   updateGate();
   try {
     await task();
+    return true;
   } catch (error) {
     setStatus(statusId, errorText(error), true);
+    return false;
   } finally {
     state.busy = false;
     updateGate();
@@ -708,7 +717,9 @@ function fillSettings() {
   $('default-coefficient').value = String(settings.coefficient ?? 1.35);
   $('site').value = settings.site || 'shein';
   $('base-url').value = settings.baseUrl || 'https://openapi.sheincorp.com';
+  $('app-id').value = settings.appId || '';
   $('open-key').value = settings.openKeyId || '';
+  $('callback-url').value = callbackUrlOf($('base-url').value);
 }
 
 async function doSaveSettings() {
@@ -719,6 +730,7 @@ async function doSaveSettings() {
       coefficient: $('default-coefficient').value,
       site: $('site').value.trim() || 'shein',
       baseUrl: $('base-url').value,
+      appId: $('app-id').value.trim(),
       openKeyId: $('open-key').value.trim()
     });
     fillSettings();
@@ -726,6 +738,46 @@ async function doSaveSettings() {
   }, 'settings-status');
   // 凭据状态刷新属于后台补充信息，放在忙碌窗口之外，避免它把紧随其后的
   // 保存密钥点击吞掉。
+  await renderCredentialStatus();
+}
+
+async function doAuthorize() {
+  const appId = $('app-id').value.trim();
+  const appSecretKey = $('app-secret').value.trim() || appSecretValue;
+  if (!appId) {
+    setStatus('shein-status', '请先填写希音 APP_ID。', true);
+    return;
+  }
+  if (!appSecretKey) {
+    setStatus('shein-status', '请先填写希音 APP_SecretKey。', true);
+    return;
+  }
+  const baseUrl = $('base-url').value;
+  state.authCancelled = false;
+  const connected = await run('正在打开希音授权页…', async () => {
+    state.credentialRevision += 1;
+    const started = await controller.startAuthorization({ appId, appSecretKey, baseUrl });
+    appSecretValue = appSecretKey;
+    $('app-secret').value = '';
+    $('cancel-authorize').hidden = false;
+    setStatus('shein-status', '请在希音授权页点击确认授权，完成后会自动连接。');
+    const { tempToken } = await controller.awaitAuthorization({
+      tabId: started.tabId,
+      state: started.state,
+      isCancelled: () => state.authCancelled
+    });
+    await controller.authorize({
+      appId,
+      appSecretKey,
+      tempToken,
+      baseUrl
+    });
+    await controller.resetAuthorizationTab();
+    fillSettings();
+    setStatus('shein-status', '已连接希音，可以提交发品。');
+  }, 'shein-status');
+  $('cancel-authorize').hidden = true;
+  if (!connected) return;
   await renderCredentialStatus();
 }
 
@@ -756,6 +808,7 @@ async function doSaveSheinSecret() {
     $('secret-key').value = '';
     setStatus('secret-status', '已保存。');
   }, 'secret-status');
+  await renderCredentialStatus();
 }
 
 async function doClearSheinSecret() {
@@ -764,6 +817,7 @@ async function doClearSheinSecret() {
     await controller.clearSecret(SECRET_CREDENTIAL);
     setStatus('secret-status', '已清除。');
   }, 'secret-status');
+  await renderCredentialStatus();
 }
 
 async function renderCredentialStatus() {
@@ -773,9 +827,12 @@ async function renderCredentialStatus() {
     // 凭据状态与保存密钥是两条异步链路：保存设置期间发起的刷新可能晚于
     // 用户刚看到的保存结果返回，不能让它把新状态覆盖回旧值。
     if (revision !== state.credentialRevision) return;
+    if (status.openKeyId && status.sheinSecret) setStatus('shein-status', '已连接希音，可以提交发品。');
+    else if (status.appSecret) setStatus('shein-status', 'APP_SecretKey 已保存，可以连接希音。');
+    else setStatus('shein-status', '还没有连接希音。');
     setStatus('secret-status', status.sheinSecret ? 'secretKey 已保存。' : 'secretKey 未保存。');
   } catch {
-    setStatus('secret-status', '凭据状态暂时不可用。', true);
+    setStatus('shein-status', '凭据状态暂时不可用。', true);
   }
 }
 
@@ -794,6 +851,12 @@ function bindEvents() {
     }
   });
   $('save-settings').addEventListener('click', () => void doSaveSettings());
+  $('authorize').addEventListener('click', () => void doAuthorize());
+  $('cancel-authorize').addEventListener('click', () => {
+    state.authCancelled = true;
+    setStatus('shein-status', '正在取消授权…');
+  });
+  $('base-url').addEventListener('change', () => { $('callback-url').value = callbackUrlOf($('base-url').value); });
   $('save-secret').addEventListener('click', () => void doSaveSheinSecret());
   $('clear-secret').addEventListener('click', () => void doClearSheinSecret());
   $('refresh-models').addEventListener('click', () => void loadModels());

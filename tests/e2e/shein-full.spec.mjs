@@ -6,7 +6,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { pack } from '@commerce/plugin-sdk/cli';
-import { OFFER_URL, OPEN_KEY_ID, SECRET_KEY, TRANSLATION, startGateway, startStorefront } from './support/servers.mjs';
+import { APP_ID, APP_SECRET, AUTHORIZE_HOST, OFFER_URL, OPEN_KEY_ID, SECRET_KEY, TEMP_TOKEN, TRANSLATION, startGateway, startStorefront } from './support/servers.mjs';
 
 const repo = process.cwd();
 const pkg = JSON.parse(readFileSync(path.join(repo, 'package.json'), 'utf8'));
@@ -44,8 +44,8 @@ async function packArtifact(directory) {
   return artifact;
 }
 
-function expectedSignature(random, timestamp, requestPath) {
-  const digest = createHmac('sha256', SECRET_KEY + random).update(OPEN_KEY_ID + '&' + timestamp + '&' + requestPath, 'utf8').digest('hex');
+function expectedSignature(random, timestamp, requestPath, { openKeyId = OPEN_KEY_ID, secretKey = SECRET_KEY } = {}) {
+  const digest = createHmac('sha256', secretKey + random).update(openKeyId + '&' + timestamp + '&' + requestPath, 'utf8').digest('hex');
   return random + Buffer.from(digest).toString('base64');
 }
 
@@ -67,7 +67,8 @@ test('1688 采集到希音提交：确认前零发品调用，签名与幂等键
     app = await _electron.launch({
       executablePath: electronBinary(root),
       args: [root, '--user-data-dir=' + path.join(temporary, 'profile'),
-        '--host-resolver-rules=MAP detail.1688.com 127.0.0.1:' + storefront.port, '--ignore-certificate-errors'],
+        '--host-resolver-rules=MAP detail.1688.com 127.0.0.1:' + storefront.port + ', MAP ' + AUTHORIZE_HOST + ' 127.0.0.1:' + storefront.port,
+        '--ignore-certificate-errors'],
       cwd: temporary, env, timeout: 120000
     });
     const shell = await app.firstWindow();
@@ -96,15 +97,35 @@ test('1688 采集到希音提交：确认前零发品调用，签名与幂等键
 
     await plugin.locator('#toggle-settings').click();
     await plugin.locator('#base-url').selectOption('https://openapi-test01.sheincorp.cn');
-    await plugin.locator('#open-key').fill(OPEN_KEY_ID);
+    await plugin.locator('#app-id').fill(APP_ID);
+    await plugin.locator('#app-secret').fill(APP_SECRET);
     await expect(plugin.locator('#model option[value="mock-translator"]')).toHaveCount(1);
     await plugin.locator('#model').selectOption('mock-translator');
     await plugin.locator('#save-settings').click();
     await expect(plugin.locator('#settings-status')).toHaveText('设置已保存。');
-    await plugin.locator('#secret-key').fill(SECRET_KEY);
-    await plugin.locator('#save-secret').click();
-    await expect(plugin.locator('#secret-status')).toHaveText('已保存。');
+    // 回调地址由插件按所选环境生成，商家不用再去开放平台复制授权码。
+    await expect(plugin.locator('#callback-url')).toHaveValue('https://openapi-test01.sheincorp.cn/plugin/callback?from=qingzuo');
+    await plugin.locator('#authorize').click();
+    await expect(plugin.locator('#shein-status')).toHaveText('已连接希音，可以提交发品。', { timeout: 60000 });
+    // 换到的 openKeyId 与解密的 secretKey 都进了设置和凭据库，APP_SecretKey 不留在界面上。
+    await expect(plugin.locator('#open-key')).toHaveValue(OPEN_KEY_ID);
+    await expect(plugin.locator('#app-secret')).toHaveValue('');
     await plugin.locator('#toggle-settings').click();
+
+    // 授权页确实是插件自己打开的：appid 与回调地址都对得上，state 原样带回来。
+    const callback = storefront.hits.find(hit => hit.host === AUTHORIZE_HOST && hit.query.tempToken);
+    expect(callback).toBeTruthy();
+    expect(callback.query.appid).toBe(APP_ID);
+    expect(Buffer.from(callback.query.redirect, 'base64').toString('utf8')).toBe('https://openapi-test01.sheincorp.cn/plugin/callback?from=qingzuo');
+    expect(callback.query.state).toMatch(/^qz[0-9a-f]{24}$/);
+
+    const exchange = gateway.sheet().find(call => call.path === '/open-api/auth/get-by-token');
+    expect(exchange.headers['x-lt-appid']).toBe(APP_ID);
+    expect(exchange.headers['x-lt-openkeyid']).toBeUndefined();
+    expect(gateway.json(exchange)).toEqual({ tempToken: TEMP_TOKEN });
+    const exchangeSignature = exchange.headers['x-lt-signature'];
+    expect(exchangeSignature.slice(0, 5)).toMatch(/^[A-Za-z0-9]{5}$/);
+    expect(exchangeSignature).toBe(expectedSignature(exchangeSignature.slice(0, 5), exchange.headers['x-lt-timestamp'], exchange.path, { openKeyId: APP_ID, secretKey: APP_SECRET }));
 
     await plugin.locator('#source-url').fill(OFFER_URL);
     await plugin.locator('#collect').click();
