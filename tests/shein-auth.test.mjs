@@ -48,8 +48,8 @@ test('解密只截取 APP_SecretKey 前 16 字节', () => {
 
 test('授权链接带上应用的 appid、回调地址与本次授权的 state', () => {
   const callbackUrl = callbackUrlOf('https://openapi.sheincorp.com');
-  // 正式环境的授权页在 openapi-sem，接口在 openapi，两者不能混用。
-  assert.equal(callbackUrl, 'https://openapi-sem.sheincorp.com/plugin/callback?from=qingzuo');
+  // 授权页在 openapi-sem，回调要落在接口域名上：授权站点会把未知路径 302 到登录页。
+  assert.equal(callbackUrl, 'https://openapi.sheincorp.com/plugin/callback?from=qingzuo');
   const address = new URL(authorizationUrl({ appId: '10ADAABD6E000B247A428884951B4', baseUrl: 'https://openapi.sheincorp.com', state: 'qz-1', callbackUrl }));
   assert.equal(address.origin, 'https://openapi-sem.sheincorp.com');
   assert.equal(address.pathname, '/');
@@ -57,7 +57,7 @@ test('授权链接带上应用的 appid、回调地址与本次授权的 state',
   const params = new URLSearchParams(address.hash.split('?')[1]);
   assert.equal(params.get('appid'), '10ADAABD6E000B247A428884951B4');
   assert.equal(params.get('state'), 'qz-1');
-  assert.equal(atob(params.get('redirectUrl')), 'https://openapi-sem.sheincorp.com/plugin/callback?from=qingzuo');
+  assert.equal(atob(params.get('redirectUrl')), 'https://openapi.sheincorp.com/plugin/callback?from=qingzuo');
   // 回调地址按当前环境生成，不能把测试环境的授权结果发到正式环境；测试环境授权页与接口同域。
   assert.equal(callbackUrlOf('https://openapi-test01.sheincorp.cn/'), 'https://openapi-test01.sheincorp.cn/plugin/callback?from=qingzuo');
   assert.equal(new URL(authorizationUrl({ appId: 'APP', baseUrl: 'https://openapi-test01.sheincorp.cn', state: 'qz-2' })).origin, 'https://openapi-test01.sheincorp.cn');
