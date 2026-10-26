@@ -1,6 +1,6 @@
 {
   "name": "@commerce/plugin-shein-full",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "private": true,
   "type": "module",
   "commerce": {
@@ -11,7 +11,7 @@
     "category": "电商工具",
     "api": "^1.4.0",
     "ui": "ui/index.html",
-    "releaseNotes": "修正全托管店铺的正式接口域名，请重新连接希音店铺。",
+    "releaseNotes": "修复全托管店铺的授权回调页面，请重新连接希音店铺。",
     "permissions": {
       "files": true,
       "storage": true,

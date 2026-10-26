@@ -11,6 +11,9 @@ const CALLBACK_FLAG = 'from=qingzuo';
 // 回调落在接口域名上不存在的路径：接口只回一个 401，地址栏里的 tempToken
 // 原样留着；授权站点会把未知路径 302 到登录页，参数就没了。
 const CALLBACK_PATH = '/plugin/callback';
+const CALLBACK_ORIGINS = Object.freeze({
+  'https://openapi.sheincorp.cn': 'https://openapi.sheincorp.com'
+});
 
 // 授权页与接口域名不是同一个：正式环境的授权页在 openapi-sem，测试环境两者一致。
 export const AUTHORIZE_ORIGINS = Object.freeze({
@@ -41,7 +44,8 @@ export function createAuthorizationState(random = globalThis.crypto) {
 // 回调地址指向接口域名本身：插件在内嵌浏览器里读回跳转后的地址，
 // 不需要在本机开监听端口，也不要求回调页能渲染出内容。
 export function callbackUrlOf(baseUrl) {
-  return new URL(String(baseUrl)).origin + CALLBACK_PATH + '?' + CALLBACK_FLAG;
+  const origin = new URL(String(baseUrl)).origin;
+  return (CALLBACK_ORIGINS[origin] ?? origin) + CALLBACK_PATH + '?' + CALLBACK_FLAG;
 }
 
 export function authorizationUrl({ appId, baseUrl, state, callbackUrl }) {
