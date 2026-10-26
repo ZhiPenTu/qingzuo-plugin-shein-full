@@ -15,6 +15,7 @@ const CALLBACK_PATH = '/plugin/callback';
 // 授权页与接口域名不是同一个：正式环境的授权页在 openapi-sem，测试环境两者一致。
 export const AUTHORIZE_ORIGINS = Object.freeze({
   'https://openapi.sheincorp.com': 'https://openapi-sem.sheincorp.com',
+  'https://openapi.sheincorp.cn': 'https://openapi-sem.sheincorp.com',
   'https://openapi-test01.sheincorp.cn': 'https://openapi-test01.sheincorp.cn'
 });
 

@@ -5,7 +5,8 @@ import {
 } from './store.mjs';
 import {
   APP_SECRET_CREDENTIAL, authorizeWithTempToken, createSheinClient, parseDocumentState, parsePermission,
-  parsePublishResult, parseQuota, parseRepeated, parseFillInStandard, parseUploadedUrl, SECRET_CREDENTIAL, SHEIN_BASE_URL
+  parsePublishResult, parseQuota, parseRepeated, parseFillInStandard, parseUploadedUrl, SECRET_CREDENTIAL,
+  SHEIN_BASE_URL, SHEIN_LEGACY_BASE_URL
 } from './shein-client.mjs';
 import { authorizationUrl, authorizeOriginOf, callbackUrlOf, createAuthorizationState, decryptSecretKey, readAuthorizationCallback } from './shein-auth.mjs';
 import { applyAttributeTemplate, parseAttributeTemplate, parseCategoryTree } from './category.mjs';
@@ -40,7 +41,7 @@ export function sourceUrlOf(value) {
 function mergeSettings(value) {
   const settings = { ...DEFAULT_SETTINGS, ...(value && typeof value === 'object' ? value : {}) };
   settings.coefficient = coefficientOf({ product: { coefficient: settings.coefficient } });
-  if (!/^https:\/\//.test(settings.baseUrl)) settings.baseUrl = SHEIN_BASE_URL;
+  if (settings.baseUrl === SHEIN_LEGACY_BASE_URL || !/^https:\/\//.test(settings.baseUrl)) settings.baseUrl = SHEIN_BASE_URL;
   return settings;
 }
 
