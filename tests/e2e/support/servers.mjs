@@ -66,7 +66,7 @@ table{border-collapse:collapse;margin:12px 0}td,th{border:1px solid #ccc;padding
 const AUTHORIZE_PAGE = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>希音授权</title></head>
 <body><p>正在完成店铺授权…</p>
 <script>
-const query = new URLSearchParams(location.search);
+const query = new URLSearchParams(location.hash.includes('?') ? location.hash.slice(location.hash.indexOf('?') + 1) : location.search);
 const redirect = query.get('redirectUrl');
 const state = query.get('state') || '';
 // 授权页把 appid 与回调地址原样带回来，测试才能在服务端看到这次授权用了什么参数。
