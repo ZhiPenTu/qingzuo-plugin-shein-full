@@ -17,9 +17,16 @@ try {
   await expect(host.plugin.locator('#submit-dialog')).toBeHidden();
   await expect(host.plugin.locator('#draft-empty')).toContainText('采集链接后');
   await host.plugin.locator('#toggle-settings').click();
+  // 主流程是应用授权：APP_ID / APP_SecretKey 与插件生成的回调地址就在设置首屏。
+  await expect(host.plugin.locator('#app-id')).toBeVisible();
+  await expect(host.plugin.locator('#app-secret')).toHaveAttribute('type', 'password');
+  await expect(host.plugin.locator('#callback-url')).toBeVisible();
+  await expect(host.plugin.locator('#authorize')).toBeEnabled();
+  await expect(host.plugin.locator('#base-url')).toContainText('测试环境');
+  // 直接填店铺凭据是兜底入口，展开后才出现。
+  await host.plugin.locator('.credential-fallback > summary').click();
   await expect(host.plugin.locator('#open-key')).toBeVisible();
   await expect(host.plugin.locator('#secret-key')).toHaveAttribute('type', 'password');
-  await expect(host.plugin.locator('#base-url')).toContainText('测试环境');
   console.log('希音全托管插件在真实宿主中加载成功，设置在启用前保持静默。');
 } finally {
   await host.close();

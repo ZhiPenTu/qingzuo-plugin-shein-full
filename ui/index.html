@@ -51,19 +51,42 @@
         </select>
       </div>
       <div class="field">
-        <label for="open-key">希音 openKeyId</label>
-        <input id="open-key" type="text" autocomplete="off" placeholder="开放平台应用标识">
+        <label for="app-id">希音 APP_ID</label>
+        <input id="app-id" type="text" autocomplete="off" placeholder="应用管理里的 APP_ID">
       </div>
       <div class="field">
-        <label for="secret-key">希音 secretKey</label>
+        <label for="app-secret">希音 APP_SecretKey</label>
+        <input id="app-secret" type="password" autocomplete="off" placeholder="不会显示已保存的值">
+      </div>
+      <div class="field field-wide">
+        <label for="callback-url">授权回调地址</label>
         <div class="row">
-          <input id="secret-key" type="password" autocomplete="off" placeholder="不会显示已保存的值">
-          <button id="save-secret" class="secondary small" type="button">保存</button>
-          <button id="clear-secret" class="secondary small" type="button">清除</button>
+          <input id="callback-url" type="text" readonly>
+          <button id="authorize" type="button">连接希音</button>
+          <button id="cancel-authorize" class="secondary small" type="button" hidden>取消</button>
         </div>
-        <p id="secret-status" class="hint" role="status"></p>
+        <p class="hint">点击「连接希音」会打开希音授权页，确认授权后自动完成连接。</p>
       </div>
     </div>
+    <p id="shein-status" class="status" role="status"></p>
+    <details class="credential-fallback">
+      <summary>已有店铺 openKeyId 与 secretKey</summary>
+      <div class="settings-grid">
+        <div class="field">
+          <label for="open-key">希音 openKeyId</label>
+          <input id="open-key" type="text" autocomplete="off" placeholder="店铺凭据里的 openKeyId">
+        </div>
+        <div class="field">
+          <label for="secret-key">希音 secretKey</label>
+          <div class="row">
+            <input id="secret-key" type="password" autocomplete="off" placeholder="不会显示已保存的值">
+            <button id="save-secret" class="secondary small" type="button">保存</button>
+            <button id="clear-secret" class="secondary small" type="button">清除</button>
+          </div>
+          <p id="secret-status" class="hint" role="status"></p>
+        </div>
+      </div>
+    </details>
     <div class="actions">
       <button id="save-settings" type="button">保存设置</button>
       <span id="settings-status" class="status" role="status"></span>

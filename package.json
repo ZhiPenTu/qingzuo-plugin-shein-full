@@ -1,6 +1,6 @@
 {
   "name": "@commerce/plugin-shein-full",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "commerce": {
@@ -11,11 +11,12 @@
     "category": "电商工具",
     "api": "^1.4.0",
     "ui": "ui/index.html",
-    "releaseNotes": "重新整理了商品终稿页排版：标题与卖点、类目与属性、图片和 SKU 分区展示，大屏下核对更清楚。",
+    "releaseNotes": "希音店铺授权改在插件内完成：填好 APP_ID 与 APP_SecretKey 后点「连接希音」，在内嵌浏览器里确认授权，插件自动读回授权结果并保存店铺凭据，不再需要去开放平台复制授权码。",
     "permissions": {
       "files": true,
       "storage": true,
       "credentials": [
+        "shein-app-secret",
         "shein-secret-key"
       ],
       "network": [
@@ -25,6 +26,7 @@
       "networkHeaders": [
         "Content-Type",
         "language",
+        "x-lt-appid",
         "x-lt-openKeyId",
         "x-lt-timestamp",
         "x-lt-signature"
@@ -35,7 +37,10 @@
       "browserOrigins": [
         "https://detail.1688.com",
         "https://m.1688.com",
-        "https://www.1688.com"
+        "https://www.1688.com",
+        "https://openapi.sheincorp.com",
+        "https://openapi-sem.sheincorp.com",
+        "https://openapi-test01.sheincorp.cn"
       ],
       "ai": [
         "image-edit",

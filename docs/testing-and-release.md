@@ -19,7 +19,7 @@
 
 1. 用 `@commerce/plugin-sdk/cli` 的 `pack` 把 `ui/` 打成临时 `.ecplugin`，SDK 直接取安装依赖里的同一份。
 2. 用 `_electron.launch` 启动 `QINGZUO_DESKTOP_ROOT` 指向的底座，带上临时 `--user-data-dir`。
-3. 用 Chromium 的 `--host-resolver-rules` 把 `detail.1688.com` 指到本机 HTTPS 服务，证书是临时自签的，所以启动参数里有 `--ignore-certificate-errors`。
+3. 用 Chromium 的 `--host-resolver-rules` 把 `detail.1688.com` 与希音测试授权域名 `openapi-test01.sheincorp.cn` 一起指到本机 HTTPS 服务，证书是临时自签的，所以启动参数里有 `--ignore-certificate-errors`。这台服务同时模拟 1688 详情页、希音授权页与授权回调，授权页会把 `appid`、回调地址和 `state` 原样带回回调，用来断言插件自己走完了整条授权链路。
 4. 通过 `COMMERCE_TEST_NETWORK_ROUTES` 把希音测试主机重定向到本机 mock 网关；AI 模型目录和补全由同一个 mock 网关的 `/v1/models` 与 `/v1/chat/completions` 提供。
 5. 在底座里导入插件、配置 mock AI、打开工具、填希音设置与密钥，再走完整流程。
 
@@ -59,7 +59,8 @@
 
 **二、希音测试环境发品**
 
-- 在设置里切到测试环境 `https://openapi-test01.sheincorp.cn`，填该环境的 openKeyId 与 secretKey。
+- 在设置里切到测试环境 `https://openapi-test01.sheincorp.cn`，填该环境的 APP_ID、APP_SecretKey，点「连接希音」，在内嵌浏览器里用测试店铺完成授权；换到的 `openKeyId`、`secretKey` 应能在开放平台后台对上。
+- 换密钥请求必须带 `x-lt-appid`（不是 `x-lt-openKeyId`），签名用 `APP_ID` 与 `APP_SecretKey` 生成；业务请求仍用换到的 `openKeyId` 与 `secretKey`。
 - 先调一次类目建议与属性模板，核对返回结构与 `ui/category.mjs` 的解析一致。
 - 生成一条真实草稿，人工审核后确认提交，记录返回的 SPU / SKC / SKU 编号。
 - 到希音后台核对：商品是否出现在待审核、字段是否落位、图片是否齐全、价格与币种是否正确。

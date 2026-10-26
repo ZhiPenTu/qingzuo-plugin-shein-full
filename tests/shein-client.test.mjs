@@ -1,8 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  createSheinClient, decodeBase64Utf8, parseDocumentState, parseEnvelope, parseFillInStandard, parsePermission,
-  parsePublishResult, parseQuota, parseRepeated, parseUploadedUrl, PATHS, SHEIN_BASE_URL, SheinError
+  authorizeWithTempToken, createSheinClient, decodeBase64Utf8, parseAuthorization, parseDocumentState, parseEnvelope,
+  parseFillInStandard, parsePermission, parsePublishResult, parseQuota, parseRepeated, parseUploadedUrl, PATHS,
+  SHEIN_BASE_URL, SheinError
 } from '../ui/shein-client.mjs';
 import { createFakeClient, ok, businessError } from './support/fake-host.mjs';
 
@@ -74,4 +75,35 @@ test('响应解析容错不同字段命名', () => {
   assert.equal(parseFillInStandard({ currency: 'usd' }).currency, 'USD');
   assert.equal(parseFillInStandard({ currency: 'RMB' }).currency, 'RMB');
   assert.equal(parseFillInStandard({ currency: '人民币' }).currency, '');
+});
+
+test('应用授权：用 APP_ID 顶替签名身份，请求头带 x-lt-appid', async () => {
+  const fake = createFakeClient({ respond: () => ok({ openKeyId: 'STORE-KEY', secretKey: 'ZW5jcnlwdGVk', supplierId: 7788 }) });
+  fake.secrets.set('shein-app-secret', 'APP-SECRET');
+  const info = await authorizeWithTempToken({ client: fake.client, appId: ' APP-ID ', tempToken: ' TMP-TOKEN ', now: () => 1740709414000 });
+  assert.deepEqual(info, { openKeyId: 'STORE-KEY', secretKey: 'ZW5jcnlwdGVk', supplierId: 7788 });
+  const [request] = fake.calls.network;
+  assert.equal(request.url, SHEIN_BASE_URL + PATHS.authorize);
+  assert.equal(request.method, 'POST');
+  assert.equal(request.headers['x-lt-appid'], 'APP-ID');
+  assert.equal(request.headers['x-lt-openKeyId'], undefined);
+  assert.equal(request.headers['x-lt-timestamp'], '1740709414000');
+  assert.equal(request.headers['Content-Type'], 'application/json;charset=UTF-8');
+  assert.deepEqual(request.json, { tempToken: 'TMP-TOKEN' });
+  assert.equal(request.headers['x-lt-signature'].length, 5 + 88);
+});
+
+test('没有保存 APP_SecretKey 时授权在宿主侧失败，不会发出请求', async () => {
+  const fake = createFakeClient({ respond: () => ok({}) });
+  await assert.rejects(() => authorizeWithTempToken({ client: fake.client, appId: 'APP-ID', tempToken: 'TMP' }), /凭据/);
+  assert.equal(fake.calls.network.length, 0);
+  await assert.rejects(() => authorizeWithTempToken({ client: fake.client, appId: '  ', tempToken: 'TMP' }), /APP_ID/);
+  await assert.rejects(() => authorizeWithTempToken({ client: fake.client, appId: 'APP-ID', tempToken: ' ' }), /授权码/);
+});
+
+test('授权结果解析容错字段命名，缺凭据时中断', () => {
+  assert.deepEqual(parseAuthorization({ openKeyId: 'K', secretKey: 'S', supplierId: 9 }), { openKeyId: 'K', secretKey: 'S', supplierId: 9 });
+  assert.deepEqual(parseAuthorization({ open_key_id: 'K', secret_key: 'S' }), { openKeyId: 'K', secretKey: 'S', supplierId: null });
+  assert.throws(() => parseAuthorization({ openKeyId: 'K' }), /没有返回店铺凭据/);
+  assert.throws(() => parseAuthorization(null), /没有返回内容/);
 });

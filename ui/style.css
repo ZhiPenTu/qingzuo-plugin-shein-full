@@ -141,8 +141,11 @@ input.narrow, input#coefficient {
 .category-grid > input { min-width: 0; }
 .category-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 9px; }
 .settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 8px 18px; }
-.settings-grid .field:last-child { grid-column: 1 / -1; }
-.settings-grid .field:last-child .row { max-width: 760px; }
+.settings-grid .field-wide { grid-column: 1 / -1; }
+.settings-grid .field-wide .row { max-width: 760px; }
+.credential-fallback { margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--border); }
+.credential-fallback > summary { color: var(--muted); font-size: 12px; cursor: pointer; }
+.credential-fallback > .settings-grid { margin-top: 10px; }
 .settings .actions { display: flex; align-items: center; gap: 12px; margin-top: 6px; }
 .collect .status:empty { display: none; }
 
