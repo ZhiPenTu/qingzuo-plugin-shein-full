@@ -1,6 +1,6 @@
 {
   "name": "@commerce/plugin-shein-full",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "private": true,
   "type": "module",
   "commerce": {
@@ -11,7 +11,7 @@
     "category": "电商工具",
     "api": "^1.4.0",
     "ui": "ui/index.html",
-    "releaseNotes": "修正正式环境授权回调地址，商家在授权页确认后能正常读回授权结果；授权仍在插件内完成，填好 APP_ID 与 APP_SecretKey 后点「连接希音」即可。",
+    "releaseNotes": "希音类目改为授权后按店铺可用类目逐级选择，选到末级自动带入 product_type_id，不再需要手填类目 ID；已选类目与完整路径会显示在选择器下方。",
     "permissions": {
       "files": true,
       "storage": true,

@@ -124,8 +124,31 @@ const TEMPLATE = {
   ]
 };
 
+// 店铺类目树按官方结构返回：只有末级分类带 product_type_id。
+const CATEGORY_TREE = {
+  data: [
+    {
+      category_id: 1200,
+      category_name: '服饰配饰',
+      parent_category_id: 0,
+      last_category: false,
+      children: [
+        {
+          category_id: 1234,
+          category_name: '围巾',
+          parent_category_id: 1200,
+          last_category: true,
+          product_type_id: 5678,
+          children: []
+        }
+      ]
+    }
+  ]
+};
+
 const RESPONSES = {
   '/open-api/auth/get-by-token': { openKeyId: OPEN_KEY_ID, secretKey: encryptedStoreSecret(), supplierId: 9001 },
+  '/open-api/goods/query-category-tree': CATEGORY_TREE,
   '/open-api/goods/product/check-supplierSku-repeated': { repeated_supplier_sku_list: [] },
   '/open-api/goods/product/check-publish-permission': { can_publish: true },
   '/open-api/goods-publish-quotas/detail': { remaining_quota: 50, total_quota: 100 },

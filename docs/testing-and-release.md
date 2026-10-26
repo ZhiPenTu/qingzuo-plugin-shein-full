@@ -61,7 +61,7 @@
 
 - 在设置里切到测试环境 `https://openapi-test01.sheincorp.cn`，填该环境的 APP_ID、APP_SecretKey，点「连接希音」，在内嵌浏览器里用测试店铺完成授权；换到的 `openKeyId`、`secretKey` 应能在开放平台后台对上。
 - 换密钥请求必须带 `x-lt-appid`（不是 `x-lt-openKeyId`），签名用 `APP_ID` 与 `APP_SecretKey` 生成；业务请求仍用换到的 `openKeyId` 与 `secretKey`。
-- 先调一次类目建议与属性模板，核对返回结构与 `ui/category.mjs` 的解析一致。
+- 先调一次店铺类目树、类目建议与属性模板，核对返回结构与 `ui/category.mjs` 的解析一致。
 - 生成一条真实草稿，人工审核后确认提交，记录返回的 SPU / SKC / SKU 编号。
 - 到希音后台核对：商品是否出现在待审核、字段是否落位、图片是否齐全、价格与币种是否正确。
 - 用「查询审核状态」拉一次真实状态，核对 `ui/shein-client.mjs` 里 `parseDocumentState` 的字段映射。
@@ -70,7 +70,7 @@
 
 - `ui/shein-payload.mjs`：`buildPublishPayload` 的字段名、层级、必填项、`image_info` 结构、SKC/SKU 字段。
 - `ui/shein-client.mjs`：`parsePermission`、`parseQuota`、`parseFillInStandard`、`parseRepeated`、`parseUploadedUrl`、`parsePublishResult`、`parseDocumentState` 的取值兼容。
-- `ui/category.mjs`：属性模板与类目建议的字段形状。
+- `ui/category.mjs`：类目树、属性模板与类目建议的字段形状。
 
 ## 失败与重试
 

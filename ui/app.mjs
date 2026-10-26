@@ -5,6 +5,7 @@ import { ROLE_LABEL, validateImage } from './images.mjs';
 import { supplyPrice } from './pricing.mjs';
 import { SECRET_CREDENTIAL } from './shein-client.mjs';
 import { callbackUrlOf } from './shein-auth.mjs';
+import { findCategoryPath } from './category.mjs';
 
 const client = createPluginClient();
 const controller = createController({ client });
@@ -21,6 +22,13 @@ const state = {
   busy: false,
   imageUrls: new Map(),
   suggestions: [],
+  categories: null,
+  categoriesLoading: false,
+  categoriesError: '',
+  categoriesPromise: null,
+  categoryPath: [],
+  categoryDraftId: null,
+  credentials: null,
   settingsOpen: false,
   credentialRevision: 0,
   authCancelled: false
@@ -224,15 +232,127 @@ function renderForm(form) {
   $('title-zh').textContent = form.product?.title?.zh ? '1688 原文：' + form.product.title.zh : '';
   $('bullets').value = (form.product?.bullets ?? []).map(item => item.en).filter(Boolean).join('\n');
   $('description').value = form.product?.description?.en ?? '';
-  $('category-id').value = form.product?.category?.sheinCategoryId ?? '';
-  $('product-type-id').value = form.product?.category?.sheinProductTypeId ?? '';
   $('category-confirmed').checked = Boolean(form.product?.category?.confirmed);
-  $('category-hint').textContent = form.product?.category?.sheinCategoryName ? '已选：' + form.product.category.sheinCategoryName : '';
+  renderCategoryPicker(form);
   $('coefficient').value = form.product?.coefficient ?? 1.35;
   $('coefficient-hint').textContent = form.source?.price ? '1688 ¥' + Number(form.source.price).toFixed(2) + ' 起算' : '';
   renderAttributes(form);
   renderSkus(form);
   renderSuggestions();
+}
+
+const CATEGORY_LEVEL_LABEL = ['一级类目', '二级类目', '三级类目', '四级类目', '五级类目'];
+
+function syncCategoryPath(form) {
+  const draftId = form?.id ?? null;
+  const switched = state.categoryDraftId !== draftId;
+  if (switched) {
+    state.categoryDraftId = draftId;
+    state.categoryPath = [];
+  }
+  const categoryId = String(form?.product?.category?.sheinCategoryId ?? '').trim();
+  if (!state.categories || !categoryId) return;
+  const path = findCategoryPath(state.categories, categoryId).map(node => node.categoryId);
+  if (path.length) state.categoryPath = path;
+}
+
+function categoryLevelNodes(depth) {
+  let nodes = state.categories ?? [];
+  for (let index = 0; index < depth; index += 1) {
+    const node = nodes.find(item => item.categoryId === state.categoryPath[index]);
+    if (!node?.children?.length) return [];
+    nodes = node.children;
+  }
+  return nodes;
+}
+
+function renderCategoryHint(form) {
+  const category = form?.product?.category ?? {};
+  const categoryId = String(category.sheinCategoryId ?? '').trim();
+  if (!categoryId) {
+    $('category-hint').textContent = '';
+    return;
+  }
+  const path = findCategoryPath(state.categories ?? [], categoryId);
+  if (!path.length) {
+    $('category-hint').textContent = state.categories
+      ? '当前类目不在店铺可用类目中，请重新选择。'
+      : '';
+    return;
+  }
+  const leaf = path[path.length - 1];
+  $('category-hint').textContent = '已选：' + path.map(node => node.name).join(' / ') +
+    `（${leaf.categoryId} / ${leaf.productTypeId || '无 product_type_id'}）`;
+}
+
+function renderCategoryPicker(form) {
+  const host = $('category-picker');
+  if (!host) return;
+  syncCategoryPath(form);
+  host.replaceChildren();
+  if (!form) {
+    $('category-hint').textContent = '';
+    return;
+  }
+  if (!state.credentials?.openKeyId || !state.credentials?.sheinSecret) {
+    host.append(el('p', { class: 'hint', text: '连接希音后会自动读取店铺类目。' }));
+    renderCategoryHint(form);
+    return;
+  }
+  if (state.categoriesLoading) {
+    host.append(el('p', { class: 'hint', text: '正在读取店铺类目…' }));
+    return;
+  }
+  if (state.categoriesError) {
+    host.append(el('p', { class: 'hint error', text: state.categoriesError }));
+    renderCategoryHint(form);
+    return;
+  }
+  if (!state.categories) {
+    host.append(el('p', { class: 'hint', text: '正在读取店铺类目…' }));
+    return;
+  }
+  if (!state.categories.length) {
+    host.append(el('p', { class: 'hint', text: '这家店铺没有可用类目，请确认希音已开通商品发布权限。' }));
+    renderCategoryHint(form);
+    return;
+  }
+
+  let depth = 0;
+  let nodes = state.categories;
+  while (nodes.length) {
+    const select = el('select', { 'data-level': String(depth) });
+    select.append(el('option', { value: '', text: CATEGORY_LEVEL_LABEL[depth] ?? `第 ${depth + 1} 级类目` }));
+    for (const node of nodes) select.append(el('option', { value: node.categoryId, text: node.name }));
+    select.value = state.categoryPath[depth] ?? '';
+    select.disabled = state.busy;
+    select.addEventListener('change', () => chooseCategory(depth, select.value));
+    host.append(select);
+    const selected = nodes.find(node => node.categoryId === state.categoryPath[depth]);
+    if (!selected?.children.length) break;
+    nodes = selected.children;
+    depth += 1;
+  }
+  renderCategoryHint(form);
+}
+
+function chooseCategory(depth, categoryId) {
+  const form = state.form;
+  if (!form) return;
+  const node = categoryLevelNodes(depth).find(item => item.categoryId === categoryId) ?? null;
+  state.categoryPath = categoryId
+    ? state.categoryPath.slice(0, depth).concat(categoryId)
+    : state.categoryPath.slice(0, depth);
+  const leaf = node?.leaf ? node : null;
+  form.product.category.sheinCategoryId = leaf ? leaf.categoryId : '';
+  form.product.category.sheinProductTypeId = leaf ? leaf.productTypeId : '';
+  form.product.category.sheinCategoryName = leaf ? leaf.name : '';
+  form.product.category.confirmed = false;
+  $('category-confirmed').checked = false;
+  markDirty();
+  renderCategoryPicker(form);
+  const next = $('category-picker').querySelector(`select[data-level="${depth + 1}"]`);
+  if (next) next.focus();
 }
 
 function renderAttributes(form) {
@@ -408,11 +528,10 @@ function applySuggestion(index) {
   form.product.category.sheinProductTypeId = item.productTypeId || '';
   form.product.category.sheinCategoryName = item.name || '';
   form.product.category.confirmed = false;
-  $('category-id').value = item.categoryId;
-  $('product-type-id').value = item.productTypeId || '';
   $('category-confirmed').checked = false;
-  $('category-hint').textContent = item.name ? '已选：' + item.name : '';
+  state.categoryPath = findCategoryPath(state.categories ?? [], item.categoryId).map(node => node.categoryId);
   markDirty();
+  renderCategoryPicker(form);
 }
 
 function updateSupplyPrices(form) {
@@ -437,12 +556,13 @@ function updateGate() {
   const form = state.form;
   const busy = state.busy;
   $('collect').disabled = busy || !$('source-url').value.trim();
-  for (const id of ['translate', 'save', 'prepare-images', 'load-template', 'suggest-category', 'delete-draft']) {
+  for (const id of ['translate', 'save', 'prepare-images', 'load-template', 'refresh-categories', 'suggest-category', 'delete-draft']) {
     const node = $(id);
     if (node) node.disabled = busy || !draft;
   }
   $('open-source').disabled = busy || !draft?.source?.url;
   $('category-confirmed').disabled = busy || !draft;
+  for (const select of $('category-picker').querySelectorAll('select')) select.disabled = busy || !draft;
 
   const issues = form ? validateDraft(form) : [];
   const errors = issues.filter(issue => issue.level !== 'warning');
@@ -541,6 +661,7 @@ function selectDraft(draftId) {
   state.dirty = false;
   state.suggestions = [];
   render();
+  void ensureCategories();
 }
 
 async function doCollect() {
@@ -593,10 +714,7 @@ async function doLoadTemplate() {
     const draft = selectedDraft();
     if (!draft) throw new Error('先选择草稿。');
     await saveForm();
-    await controller.loadTemplate(draft.id, {
-      categoryId: $('category-id').value.trim(),
-      productTypeId: $('product-type-id').value.trim()
-    });
+    await controller.loadTemplate(draft.id);
     await refreshStatus(draft.id);
     render();
     setStatus('action-status', '已加载必填属性，请补全英文值。');
@@ -610,7 +728,50 @@ async function doSuggestCategory() {
     await saveForm();
     state.suggestions = await controller.suggestCategory(draft.id);
     renderSuggestions();
-    setStatus('action-status', state.suggestions.length ? '选择一个建议类目，再读取属性模板。' : '没有返回类目建议，请手动填写类目 ID。');
+    setStatus('action-status', state.suggestions.length ? '选择一个建议类目，再读取属性模板。' : '没有返回类目建议，请从店铺类目中选择。');
+  });
+}
+
+async function ensureCategories({ force = false } = {}) {
+  if (state.categoriesPromise) {
+    if (!force) return state.categoriesPromise;
+    await state.categoriesPromise;
+    if (state.categoriesPromise) return state.categoriesPromise;
+  }
+  const credentials = state.credentials ?? await controller.credentialStatus().catch(() => null);
+  if (!credentials?.openKeyId || !credentials?.sheinSecret) {
+    state.categories = null;
+    state.categoriesError = '';
+    renderCategoryPicker(state.form);
+    return null;
+  }
+  state.categoriesLoading = true;
+  state.categoriesError = '';
+  renderCategoryPicker(state.form);
+  const task = (async () => {
+    try {
+      state.categories = await controller.loadCategories({ force });
+      return state.categories;
+    } catch (error) {
+      state.categories = null;
+      state.categoriesError = errorText(error);
+      return null;
+    } finally {
+      state.categoriesLoading = false;
+      state.categoriesPromise = null;
+      renderCategoryPicker(state.form);
+    }
+  })();
+  state.categoriesPromise = task;
+  return task;
+}
+
+async function doRefreshCategories() {
+  await run('正在读取店铺类目…', async () => {
+    const categories = await ensureCategories({ force: true });
+    if (state.categoriesError) throw new Error(state.categoriesError);
+    if (!categories) throw new Error('请先在设置中连接希音店铺。');
+    setStatus('action-status', '店铺类目已更新。');
   });
 }
 
@@ -739,6 +900,7 @@ async function doSaveSettings() {
   // 凭据状态刷新属于后台补充信息，放在忙碌窗口之外，避免它把紧随其后的
   // 保存密钥点击吞掉。
   await renderCredentialStatus();
+  void ensureCategories();
 }
 
 async function doAuthorize() {
@@ -779,6 +941,7 @@ async function doAuthorize() {
   $('cancel-authorize').hidden = true;
   if (!connected) return;
   await renderCredentialStatus();
+  await ensureCategories();
 }
 
 async function loadModels() {
@@ -809,6 +972,7 @@ async function doSaveSheinSecret() {
     setStatus('secret-status', '已保存。');
   }, 'secret-status');
   await renderCredentialStatus();
+  void ensureCategories();
 }
 
 async function doClearSheinSecret() {
@@ -818,6 +982,7 @@ async function doClearSheinSecret() {
     setStatus('secret-status', '已清除。');
   }, 'secret-status');
   await renderCredentialStatus();
+  void ensureCategories();
 }
 
 async function renderCredentialStatus() {
@@ -827,6 +992,7 @@ async function renderCredentialStatus() {
     // 凭据状态与保存密钥是两条异步链路：保存设置期间发起的刷新可能晚于
     // 用户刚看到的保存结果返回，不能让它把新状态覆盖回旧值。
     if (revision !== state.credentialRevision) return;
+    state.credentials = { openKeyId: status.openKeyId, sheinSecret: status.sheinSecret };
     if (status.openKeyId && status.sheinSecret) setStatus('shein-status', '已连接希音，可以提交发品。');
     else if (status.appSecret) setStatus('shein-status', 'APP_SecretKey 已保存，可以连接希音。');
     else setStatus('shein-status', '还没有连接希音。');
@@ -867,18 +1033,6 @@ function bindEvents() {
     markDirty();
   });
   $('description').addEventListener('input', event => { state.form.product.description.en = event.target.value; markDirty(); });
-  $('category-id').addEventListener('input', event => {
-    if (state.form.product.category.sheinCategoryId !== event.target.value) state.form.product.category.confirmed = false;
-    state.form.product.category.sheinCategoryId = event.target.value.trim();
-    $('category-confirmed').checked = false;
-    markDirty();
-  });
-  $('product-type-id').addEventListener('input', event => {
-    if (state.form.product.category.sheinProductTypeId !== event.target.value) state.form.product.category.confirmed = false;
-    state.form.product.category.sheinProductTypeId = event.target.value.trim();
-    $('category-confirmed').checked = false;
-    markDirty();
-  });
   $('category-confirmed').addEventListener('change', event => { state.form.product.category.confirmed = event.target.checked; markDirty(); });
   $('coefficient').addEventListener('input', event => {
     state.form.product.coefficient = Number(event.target.value);
@@ -890,6 +1044,7 @@ function bindEvents() {
   $('translate').addEventListener('click', () => void doTranslate());
   $('prepare-images').addEventListener('click', () => void doPrepareImages());
   $('load-template').addEventListener('click', () => void doLoadTemplate());
+  $('refresh-categories').addEventListener('click', () => void doRefreshCategories());
   $('suggest-category').addEventListener('click', () => void doSuggestCategory());
   $('save').addEventListener('click', () => void doSave());
   $('open-source').addEventListener('click', () => void doOpenSource());
@@ -912,6 +1067,7 @@ void (async () => {
     fillSettings();
     render();
     await renderCredentialStatus();
+    if (state.form) void ensureCategories();
   } catch (error) {
     setStatus('action-status', errorText(error), true);
   }

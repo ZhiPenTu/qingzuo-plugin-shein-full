@@ -138,8 +138,20 @@ test('1688 采集到希音提交：确认前零发品调用，签名与幂等键
     await expect(plugin.locator('#action-status')).toHaveText('已生成英文文案，请逐项校对。', { timeout: 90000 });
     await expect(plugin.locator('#title-en')).toHaveValue(TRANSLATION.title);
 
-    await plugin.locator('#category-id').fill('1234');
-    await plugin.locator('#product-type-id').fill('5678');
+    // 授权后类目从店铺接口读取，运营只需按层级选择末级类目。
+    const categorySelects = plugin.locator('#category-picker select');
+    await expect(categorySelects).toHaveCount(1, { timeout: 90000 });
+    await categorySelects.nth(0).selectOption('1200');
+    await expect(categorySelects).toHaveCount(2);
+    await categorySelects.nth(1).selectOption('1234');
+    await expect(plugin.locator('#category-hint')).toContainText('围巾');
+    await expect(plugin.locator('#category-hint')).toContainText('5678');
+
+    const categoryCall = gateway.sheet().find(call => call.path === '/open-api/goods/query-category-tree');
+    expect(categoryCall.headers['x-lt-openkeyid']).toBe(OPEN_KEY_ID);
+    const categorySignature = categoryCall.headers['x-lt-signature'];
+    expect(categorySignature).toBe(expectedSignature(categorySignature.slice(0, 5), categoryCall.headers['x-lt-timestamp'], categoryCall.path));
+
     await plugin.locator('#load-template').click();
     await expect(plugin.locator('#action-status')).toHaveText('已加载必填属性，请补全英文值。', { timeout: 90000 });
     await expect(plugin.locator('#attributes .attribute-row')).toHaveCount(2);

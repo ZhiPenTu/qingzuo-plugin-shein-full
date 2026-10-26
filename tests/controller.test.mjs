@@ -289,3 +289,40 @@ test('未连接希音时提交提示先完成授权', async () => {
   await assert.rejects(() => controller.submit(draft.id, { confirm: true }), /连接希音/);
   assert.equal(fake.calls.network.length, 0);
 });
+
+test('读取店铺类目树后复用缓存，换店铺或手动刷新才重新请求', async () => {
+  const tree = {
+    data: [{
+      category_id: 1200,
+      category_name: '服饰配饰',
+      last_category: false,
+      children: [{ category_id: 1234, category_name: '围巾', last_category: true, product_type_id: 5678 }]
+    }]
+  };
+  const { controller, calls } = await readyController({
+    '/open-api/goods/query-category-tree': () => ok(tree)
+  });
+  const categories = await controller.loadCategories();
+  assert.equal(categories[0].categoryId, '1200');
+  assert.equal(categories[0].children[0].productTypeId, '5678');
+  assert.equal(networkPaths(calls).filter(path => path === '/open-api/goods/query-category-tree').length, 1);
+
+  await controller.loadCategories();
+  assert.equal(networkPaths(calls).filter(path => path === '/open-api/goods/query-category-tree').length, 1);
+
+  await controller.loadCategories({ force: true });
+  assert.equal(networkPaths(calls).filter(path => path === '/open-api/goods/query-category-tree').length, 2);
+
+  // 修改店铺设置后缓存失效，下一次读取会重新拉取。
+  await controller.saveSettings({ openKeyId: 'OTHER-KEY' });
+  await controller.loadCategories();
+  assert.equal(networkPaths(calls).filter(path => path === '/open-api/goods/query-category-tree').length, 3);
+});
+
+test('未连接希音时不会请求类目树', async () => {
+  const fake = createFakeClient({ snapshot, respond: routeOverrides() });
+  const controller = createController({ client: fake.client, now: () => 1760000000000 });
+  await controller.load();
+  await assert.rejects(() => controller.loadCategories(), /连接希音/);
+  assert.equal(fake.calls.network.length, 0);
+});

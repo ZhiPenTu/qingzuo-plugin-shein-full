@@ -30,6 +30,17 @@ test('发品请求带上希音签名头与 JSON Content-Type', async () => {
   assert.deepEqual(request.json, { category_id: 1 });
 });
 
+test('类目树请求走店铺签名并发送空 JSON', async () => {
+  const { gateway: client, calls } = gateway(() => ok({ data: [] }));
+  await client.queryCategoryTree();
+  const [request] = calls.network;
+  assert.equal(request.url, SHEIN_BASE_URL + PATHS.categoryTree);
+  assert.equal(request.method, 'POST');
+  assert.equal(request.headers['x-lt-openKeyId'], 'KEYID');
+  assert.equal(request.headers.language, 'zh-cn');
+  assert.deepEqual(request.json, {});
+});
+
 test('图片上传走 multipart，不覆盖宿主的 Content-Type boundary', async () => {
   const { gateway: client, calls } = gateway(() => ok({ image_url: 'https://img.shein.test/a.jpg' }));
   const info = await client.uploadPic({ token: 'file-7', imageType: 1 });
