@@ -79,6 +79,21 @@ test('采集链接后生成草稿，并把标签页归属记在草稿上', async
   await assert.rejects(() => controller.collect('https://www.taobao.com/item/1'), /1688/);
 });
 
+test('旧版全托管正式接口域名自动迁移到当前域名', async () => {
+  const fake = createFakeClient({ snapshot });
+  await fake.storage.set('settings', {
+    model: 'mock-translator',
+    coefficient: 1.35,
+    site: 'shein',
+    baseUrl: 'https://openapi.sheincorp.com',
+    appId: APP_ID,
+    openKeyId: 'STORE-KEY'
+  });
+  const controller = createController({ client: fake.client, now: () => 1760000000000 });
+  await controller.load();
+  assert.equal(controller.getState().settings.baseUrl, 'https://openapi.sheincorp.cn');
+});
+
 test('未点确认时提交直接被拒绝，发品网关零调用', async () => {
   const { controller, calls } = await readyController();
   const draft = await collected(controller);

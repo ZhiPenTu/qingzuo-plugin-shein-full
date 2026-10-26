@@ -877,7 +877,7 @@ function fillSettings() {
   $('model').value = settings.model || '';
   $('default-coefficient').value = String(settings.coefficient ?? 1.35);
   $('site').value = settings.site || 'shein';
-  $('base-url').value = settings.baseUrl || 'https://openapi.sheincorp.com';
+  $('base-url').value = settings.baseUrl || 'https://openapi.sheincorp.cn';
   $('app-id').value = settings.appId || '';
   $('open-key').value = settings.openKeyId || '';
   $('callback-url').value = callbackUrlOf($('base-url').value);

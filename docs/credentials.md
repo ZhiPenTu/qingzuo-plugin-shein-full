@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | 翻译模型 | 设置 → 翻译模型 | 从轻作 AI 设置拉取模型；留空使用轻作默认模型 |
 | 新草稿加价系数 | 设置 → 新草稿加价系数 | 默认 `1.35`，可填 `1.05`–`3`。只影响之后新建的草稿 |
-| 希音接口 | 设置 → 希音接口 | 正式 `https://openapi.sheincorp.com`，测试 `https://openapi-test01.sheincorp.cn` |
+| 希音接口 | 设置 → 希音接口 | 全托管正式 `https://openapi.sheincorp.cn`，测试 `https://openapi-test01.sheincorp.cn` |
 | 希音 APP_ID | 设置 → 希音 APP_ID | 开放平台「应用管理」里的应用标识，不是密钥，存在设置里 |
 | 希音 APP_SecretKey | 设置 → 希音 APP_SecretKey | 存系统凭据库，只用于换密钥与解密 |
 | 授权回调地址 | 设置 → 授权回调地址 | 插件按当前环境生成，只读；「连接希音」用它接收回调 |
@@ -23,7 +23,7 @@
 2. 调 `POST /open-api/auth/get-by-token`，请求头用 `x-lt-appid`，签名用 `APP_ID`（顶替 `openKeyId`）与 `APP_SecretKey` 生成，请求体是 `{ "tempToken": "..." }`。
 3. 返回的 `info.openKeyId` 直接可用；`info.secretKey` 是密文，要用 `APP_SecretKey` 解密：密钥取 `APP_SecretKey` 的 UTF-8 前 16 字节，AES-128-CBC，IV 固定 `space-station-de`，PKCS7 补齐。
 
-插件把这三步做成了「连接希音」按钮：填 APP_ID、APP_SecretKey，点一下打开授权页，商家确认后就自动读回 `tempToken`，把 `openKeyId` 存进设置、解密后的 `secretKey` 存进系统凭据库。授权页与回调地址都由插件按所选环境生成：正式环境授权页在 `https://openapi-sem.sheincorp.com`，回调地址在 `https://openapi.sheincorp.com/plugin/callback`，测试环境两者都在 `https://openapi-test01.sheincorp.cn/plugin/callback`。回调之所以放在接口域名上，是因为授权站点会把未知路径 302 到登录页，地址栏里的 `tempToken` 会被丢掉；接口域名只回一个 401，地址原样保留，插件才能读回来。`state` 每次授权都不同，回来的 `state` 对不上就不算这次的结果。
+插件把这三步做成了「连接希音」按钮：填 APP_ID、APP_SecretKey，点一下打开授权页，商家确认后就自动读回 `tempToken`，把 `openKeyId` 存进设置、解密后的 `secretKey` 存进系统凭据库。授权页与回调地址都由插件按所选环境生成：全托管正式环境授权页在 `https://openapi-sem.sheincorp.com`，回调地址在 `https://openapi.sheincorp.cn/plugin/callback`，测试环境两者都在 `https://openapi-test01.sheincorp.cn/plugin/callback`。回调之所以放在接口域名上，是因为授权站点会把未知路径 302 到登录页，地址栏里的 `tempToken` 会被丢掉；接口域名只回一个 401，地址原样保留，插件才能读回来。`state` 每次授权都不同，回来的 `state` 对不上就不算这次的结果。
 
 手里已经有店铺 `openKeyId` 与 `secretKey` 时（例如测试店铺直接给出的那一对），展开「已有店铺 openKeyId 与 secretKey」直接填写即可，不必走授权流程。
 

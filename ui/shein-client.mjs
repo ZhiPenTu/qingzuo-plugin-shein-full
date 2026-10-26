@@ -1,6 +1,7 @@
 import { buildSignMessage, composeSignature, randomKey, signHeaders, signJsonHeaders } from './shein-sign.mjs';
 
-export const SHEIN_BASE_URL = 'https://openapi.sheincorp.com';
+export const SHEIN_BASE_URL = 'https://openapi.sheincorp.cn';
+export const SHEIN_LEGACY_BASE_URL = 'https://openapi.sheincorp.com';
 export const SHEIN_TEST_BASE_URL = 'https://openapi-test01.sheincorp.cn';
 export const SECRET_CREDENTIAL = 'shein-secret-key';
 export const APP_SECRET_CREDENTIAL = 'shein-app-secret';
