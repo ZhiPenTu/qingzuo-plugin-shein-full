@@ -8,7 +8,7 @@ import {
   parsePublishResult, parseQuota, parseRepeated, parseFillInStandard, parseUploadedUrl, SECRET_CREDENTIAL, SHEIN_BASE_URL
 } from './shein-client.mjs';
 import { authorizationUrl, authorizeOriginOf, callbackUrlOf, createAuthorizationState, decryptSecretKey, readAuthorizationCallback } from './shein-auth.mjs';
-import { applyAttributeTemplate, parseAttributeTemplate } from './category.mjs';
+import { applyAttributeTemplate, parseAttributeTemplate, parseCategoryTree } from './category.mjs';
 import { buildPublishPayload } from './shein-payload.mjs';
 import { translateProduct } from './translate.mjs';
 import { convertToJpeg, imageNeedsConversion, imageTypeFor, readImageSize, validateImage } from './images.mjs';
@@ -53,7 +53,7 @@ function mergeConfig(draft, patch) {
 }
 
 export function createController({ client, now = () => Date.now(), sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
-  const state = { settings: { ...DEFAULT_SETTINGS }, drafts: [], tabId: null, loaded: false };
+  const state = { settings: { ...DEFAULT_SETTINGS }, drafts: [], tabId: null, loaded: false, categories: null };
   const listeners = new Set();
   const notify = () => { for (const listener of listeners) { try { listener(); } catch {} } };
 
@@ -107,6 +107,7 @@ export function createController({ client, now = () => Date.now(), sleep = ms =>
 
   async function saveSettings(patch) {
     state.settings = mergeSettings({ ...state.settings, ...patch });
+    state.categories = null;
     await client.storage.set(SETTINGS_KEY, state.settings);
     notify();
     return state.settings;
@@ -121,6 +122,7 @@ export function createController({ client, now = () => Date.now(), sleep = ms =>
 
   async function clearSecret(name) {
     await client.credentials.clear(name);
+    if (name === SECRET_CREDENTIAL) state.categories = null;
     notify();
   }
 
@@ -138,6 +140,7 @@ export function createController({ client, now = () => Date.now(), sleep = ms =>
   async function startAuthorization({ appId, appSecretKey, baseUrl }) {
     const { appIdValue, appSecret } = appCredentials(appId, appSecretKey);
     state.settings = mergeSettings({ ...state.settings, appId: appIdValue, baseUrl: baseUrl ?? state.settings.baseUrl });
+    state.categories = null;
     await client.storage.set(SETTINGS_KEY, state.settings);
     await client.credentials.set(APP_SECRET_CREDENTIAL, appSecret);
     const callbackUrl = callbackUrlOf(state.settings.baseUrl);
@@ -178,6 +181,7 @@ export function createController({ client, now = () => Date.now(), sleep = ms =>
     const info = await authorizeWithTempToken({ client, appId: appIdValue, tempToken, baseUrl: state.settings.baseUrl, now });
     const secretKey = await decryptSecretKey(info.secretKey, appSecret);
     state.settings = mergeSettings({ ...state.settings, openKeyId: info.openKeyId });
+    state.categories = null;
     await client.storage.set(SETTINGS_KEY, state.settings);
     await client.credentials.set(SECRET_CREDENTIAL, secretKey);
     notify();
@@ -294,7 +298,7 @@ export function createController({ client, now = () => Date.now(), sleep = ms =>
     const draft = find(draftId);
     const sheinCategoryId = String(categoryId ?? draft.product.category.sheinCategoryId ?? '').trim();
     const sheinProductTypeId = String(productTypeId ?? draft.product.category.sheinProductTypeId ?? '').trim();
-    if (!/^\d+$/.test(sheinCategoryId) || !/^\d+$/.test(sheinProductTypeId)) throw new Error('请填写数字格式的希音类目 ID 与 product_type_id。');
+    if (!/^\d+$/.test(sheinCategoryId) || !/^\d+$/.test(sheinProductTypeId)) throw new Error('请先选择希音末级类目，再读取属性模板。');
     const gateway = await ensureCredentials();
     const [info, standard] = await Promise.all([
       gateway.queryAttributeTemplate([Number(sheinProductTypeId)]),
@@ -308,6 +312,15 @@ export function createController({ client, now = () => Date.now(), sleep = ms =>
     next = { ...next, updated: now() };
     if (template.attributes.length) next.notes = [...new Set([...(next.notes ?? []), '已加载 ' + template.attributes.length + ' 个希音属性'])];
     return persistDraft(next);
+  }
+
+  // 类目树跟随店铺权限，同一次连接内复用；切换环境或重新授权后由上面几处置空。
+  async function loadCategories({ force = false } = {}) {
+    if (!force && state.categories) return state.categories;
+    const gateway = await ensureCredentials();
+    const categories = parseCategoryTree(await gateway.queryCategoryTree());
+    state.categories = categories;
+    return categories;
   }
 
   async function suggestCategory(draftId) {
@@ -414,7 +427,7 @@ export function createController({ client, now = () => Date.now(), sleep = ms =>
 
   return Object.freeze({
     load, saveSettings, setSecret, clearSecret, startAuthorization, awaitAuthorization, resetAuthorizationTab, authorize, credentialStatus, aiCatalog,
-    collect, translate, prepareImages, loadTemplate, suggestCategory, ensureTab,
+    collect, translate, prepareImages, loadCategories, loadTemplate, suggestCategory, ensureTab,
     saveDraft, submit, poll, remove, resume,
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
     getState() { return state; },
