@@ -200,8 +200,8 @@ test('用 APP_ID 与 APP_SecretKey 换取店铺凭据后即可直接发品', asy
   assert.equal(started.callbackUrl, 'https://openapi-test01.sheincorp.cn/plugin/callback?from=qingzuo');
   const address = new URL(started.authorizeUrl);
   assert.equal(address.origin, 'https://openapi-test01.sheincorp.cn');
-  assert.ok(address.hash.startsWith('#/empower?'), address.hash);
-  const params = new URLSearchParams(address.hash.split('?')[1]);
+  assert.equal(address.hash, '#/empower');
+  const params = address.searchParams;
   assert.equal(params.get('appid'), APP_ID);
   assert.equal(atob(params.get('redirectUrl')), started.callbackUrl);
   assert.equal(params.get('state'), started.state);

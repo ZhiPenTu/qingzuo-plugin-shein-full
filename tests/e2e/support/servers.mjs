@@ -66,7 +66,7 @@ table{border-collapse:collapse;margin:12px 0}td,th{border:1px solid #ccc;padding
 const AUTHORIZE_PAGE = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>希音授权</title></head>
 <body><p>正在完成店铺授权…</p>
 <script>
-const query = new URLSearchParams((location.hash.split('?')[1] || ''));
+const query = new URLSearchParams(location.search);
 const redirect = query.get('redirectUrl');
 const state = query.get('state') || '';
 // 授权页把 appid 与回调地址原样带回来，测试才能在服务端看到这次授权用了什么参数。
@@ -86,7 +86,7 @@ export async function startStorefront({ key, cert }) {
     const host = String(request.headers.host || '').split(':')[0];
     const address = new URL(request.url, 'https://' + (host || AUTHORIZE_HOST));
     const pathname = address.pathname;
-    // 授权链接的参数在 hash 里，浏览器不会发给服务端，所以只看查询串。
+    // 授权链接的参数在页面 search 里，浏览器会和服务端一起收到。
     hits.push({ host, path: pathname, url: request.url, query: Object.fromEntries(address.searchParams) });
     if (host === AUTHORIZE_HOST) {
       response.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
