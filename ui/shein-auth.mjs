@@ -8,8 +8,8 @@ const AES_KEY_BYTES = 16;
 const STATE_BYTES = 12;
 const AUTHORIZE_ROUTE = '#/empower';
 const CALLBACK_FLAG = 'from=qingzuo';
-// 回调落在一个授权站点上不存在的路径：页面本身不会跑单页应用的路由，
-// 地址栏里的 tempToken 就不会被改写成别的路由。
+// 回调落在接口域名上不存在的路径：接口只回一个 401，地址栏里的 tempToken
+// 原样留着；授权站点会把未知路径 302 到登录页，参数就没了。
 const CALLBACK_PATH = '/plugin/callback';
 
 // 授权页与接口域名不是同一个：正式环境的授权页在 openapi-sem，测试环境两者一致。
@@ -37,10 +37,10 @@ export function createAuthorizationState(random = globalThis.crypto) {
   return 'qz' + Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
-// 回调地址指向希音授权域名本身：插件在内嵌浏览器里读回跳转后的地址，
+// 回调地址指向接口域名本身：插件在内嵌浏览器里读回跳转后的地址，
 // 不需要在本机开监听端口，也不要求回调页能渲染出内容。
 export function callbackUrlOf(baseUrl) {
-  return authorizeOriginOf(baseUrl) + CALLBACK_PATH + '?' + CALLBACK_FLAG;
+  return new URL(String(baseUrl)).origin + CALLBACK_PATH + '?' + CALLBACK_FLAG;
 }
 
 export function authorizationUrl({ appId, baseUrl, state, callbackUrl }) {
