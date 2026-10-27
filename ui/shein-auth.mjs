@@ -8,12 +8,8 @@ const AES_KEY_BYTES = 16;
 const STATE_BYTES = 12;
 const AUTHORIZE_ROUTE = '#/empower';
 const CALLBACK_FLAG = 'from=qingzuo';
-// 回调落在接口域名上不存在的路径：接口只回一个 401，地址栏里的 tempToken
-// 原样留着；授权站点会把未知路径 302 到登录页，参数就没了。
-const CALLBACK_PATH = '/plugin/callback';
-const CALLBACK_ORIGINS = Object.freeze({
-  'https://openapi.sheincorp.cn': 'https://openapi.sheincorp.com'
-});
+// 回调必须是 HTTPS 页面，授权码只留在地址栏里供插件读取。
+const CALLBACK_URL = 'https://zhipentu.github.io/qingzuo-desktop/shein-auth-callback.html?' + CALLBACK_FLAG;
 
 // 授权页与接口域名不是同一个：正式环境的授权页在 openapi-sem，测试环境两者一致。
 export const AUTHORIZE_ORIGINS = Object.freeze({
@@ -41,11 +37,11 @@ export function createAuthorizationState(random = globalThis.crypto) {
   return 'qz' + Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
-// 回调地址指向接口域名本身：插件在内嵌浏览器里读回跳转后的地址，
-// 不需要在本机开监听端口，也不要求回调页能渲染出内容。
+// 回调地址指向轻作成功页：插件在内嵌浏览器里读回跳转后的地址，
+// 不需要在本机开监听端口，也不再展示接口域名的 401 页面。
 export function callbackUrlOf(baseUrl) {
-  const origin = new URL(String(baseUrl)).origin;
-  return (CALLBACK_ORIGINS[origin] ?? origin) + CALLBACK_PATH + '?' + CALLBACK_FLAG;
+  new URL(String(baseUrl));
+  return CALLBACK_URL;
 }
 
 export function authorizationUrl({ appId, baseUrl, state, callbackUrl }) {
