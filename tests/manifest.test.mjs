@@ -15,7 +15,7 @@ test('插件清单通过底座的清单校验', () => {
 
 test('只申请 1.4 新增能力所需的最小权限', () => {
   const permissions = pkg.commerce.permissions;
-  assert.match(pkg.commerce.api, /\^1\.4\.0/);
+  assert.match(pkg.commerce.api, /\^1\.5\.0/);
   assert.deepEqual(permissions.browser, ['automate']);
   assert.ok(permissions.browserOrigins.includes('https://detail.1688.com'));
   // 授权页与回调地址都在希音域名下，内嵌浏览器要能打开并读回跳转结果。

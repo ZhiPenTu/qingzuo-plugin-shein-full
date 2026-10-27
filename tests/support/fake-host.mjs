@@ -16,7 +16,7 @@ export function businessError(code, msg) {
 
 // 最小可用的插件宿主替身：存储、凭据、浏览器和网络都记录调用，方便断言
 // “没点确认就绝不发品”这类安全约定。
-export function createFakeClient({ snapshot, resource = { data: PNG_1X1, mime: 'image/png', name: 'main.png' }, respond, translation, imageModels, batch } = {}) {
+export function createFakeClient({ snapshot, resource = { data: PNG_1X1, mime: 'image/png', name: 'main.png' }, respond, translation, complete, imageModels, batch } = {}) {
   const storage = new Map();
   const files = new Map();
   const secrets = new Map();
@@ -122,6 +122,7 @@ export function createFakeClient({ snapshot, resource = { data: PNG_1X1, mime: '
       },
       async complete(options) {
         calls.ai.push(['complete', options]);
+        if (complete) return complete(options);
         return { content: JSON.stringify(translated), model: options.model || 'mock-translator' };
       },
       batch: {

@@ -33,7 +33,7 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      # 插件依赖 API 1.4 的文本 AI 能力，必须跑在支持 1.4 的宿主上。
+      # 插件依赖 API 1.5 的图片补全能力，必须跑在支持 1.5 的宿主上。
       # 固定一次成功的底座发布验证，避免用未知宿主冒充兼容。
       - name: Require a pinned, successful host validation
         run: |

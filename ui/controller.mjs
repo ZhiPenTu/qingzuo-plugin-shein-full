@@ -12,7 +12,8 @@ import { authorizationUrl, authorizeOriginOf, callbackUrlOf, createAuthorization
 import { applyAttributeTemplate, parseAttributeTemplate, parseCategoryTree } from './category.mjs';
 import { buildPublishPayload } from './shein-payload.mjs';
 import { translateProduct, translateTitle } from './translate.mjs';
-import { convertToJpeg, imageNeedsConversion, imageTypeFor, readImageSize, submitImage, validateImage } from './images.mjs';
+import { suggestTitles as suggestProductTitles } from './title-suggestions.mjs';
+import { convertToJpeg, fitForVision, heroImage, imageNeedsConversion, imageTypeFor, readImageSize, submitImage, validateImage } from './images.mjs';
 
 export const DRAFTS_KEY = 'drafts';
 export const SETTINGS_KEY = 'settings';
@@ -56,7 +57,7 @@ function mergeConfig(draft, patch) {
   return next;
 }
 
-export function createController({ client, now = () => Date.now(), sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
+export function createController({ client, now = () => Date.now(), sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), prepareVisionImage = fitForVision }) {
   const state = { settings: { ...DEFAULT_SETTINGS }, drafts: [], tabId: null, loaded: false, categories: null };
   const listeners = new Set();
   const notify = () => { for (const listener of listeners) { try { listener(); } catch {} } };
@@ -72,6 +73,35 @@ export function createController({ client, now = () => Date.now(), sleep = ms =>
     const draft = state.drafts.find(item => item.id === draftId);
     if (!draft) throw new Error('草稿不存在或已删除。');
     return draft;
+  }
+
+  function sourceInput(draft) {
+    return {
+      title: draft.product?.title?.zh || draft.source?.title || '',
+      attributes: (draft.source?.attributes ?? []).map(item => ({ name: item.name, value: item.value })),
+      colors: (draft.product?.skus ?? []).map(item => item.color).filter(Boolean),
+      categoryPath: draft.source?.breadcrumb ?? []
+    };
+  }
+
+  function glossaryKeyOf(draft) {
+    return 'glossary.' + (draft.product?.category?.sheinCategoryId || 'default');
+  }
+
+  async function readGlossary(draft) {
+    const glossary = await client.storage.get(glossaryKeyOf(draft));
+    return glossary && typeof glossary === 'object' ? glossary : {};
+  }
+
+  // 翻译与标题建议都只改英文标题，状态和校验走同一条路径。
+  async function saveEnglishTitle(draft, title) {
+    const next = {
+      ...draft,
+      product: { ...draft.product, title: { ...draft.product.title, en: String(title ?? '').slice(0, 200) } },
+      updated: now()
+    };
+    next.issues = validateDraft(next);
+    return persistDraft(next);
   }
 
   async function ensureCredentials() {
@@ -227,22 +257,17 @@ export function createController({ client, now = () => Date.now(), sleep = ms =>
 
   async function translate(draftId) {
     const draft = find(draftId);
-    const glossaryKey = 'glossary.' + (draft.product?.category?.sheinCategoryId || 'default');
-    const glossary = await client.storage.get(glossaryKey);
+    const glossaryKey = glossaryKeyOf(draft);
+    const glossary = await readGlossary(draft);
     const translation = await translateProduct({
       client,
       model: state.settings.model,
-      glossary: glossary && typeof glossary === 'object' ? glossary : {},
-      input: {
-        title: draft.product?.title?.zh || draft.source?.title || '',
-        attributes: (draft.source?.attributes ?? []).map(item => ({ name: item.name, value: item.value })),
-        colors: (draft.product?.skus ?? []).map(item => item.color).filter(Boolean),
-        categoryPath: draft.source?.breadcrumb ?? []
-      }
+      glossary,
+      input: sourceInput(draft)
     });
     let next = applyTranslation(draft, translation, now());
     if ((next.product?.images ?? []).some(image => image.token)) next = advance(next, 'imaged', '图片已就绪');
-    const mergedGlossary = { ...(glossary && typeof glossary === 'object' ? glossary : {}) };
+    const mergedGlossary = { ...glossary };
     for (const attribute of translation.attributes ?? []) if (attribute?.name && attribute?.value) mergedGlossary[attribute.name] = attribute.value;
     await client.storage.set(glossaryKey, mergedGlossary);
     return persistDraft(next);
@@ -252,21 +277,49 @@ export function createController({ client, now = () => Date.now(), sleep = ms =>
     const draft = find(draftId);
     const sourceTitle = String(draft.product?.title?.zh || draft.source?.title || '').trim();
     if (!sourceTitle) throw new Error('请先填写 1688 原文。');
-    const glossaryKey = 'glossary.' + (draft.product?.category?.sheinCategoryId || 'default');
-    const glossary = await client.storage.get(glossaryKey);
     const title = await translateTitle({
       client,
       model: state.settings.model,
       title: sourceTitle,
-      glossary: glossary && typeof glossary === 'object' ? glossary : {}
+      glossary: await readGlossary(draft)
     });
-    const next = {
-      ...draft,
-      product: { ...draft.product, title: { ...draft.product.title, en: title.slice(0, 200) } },
-      updated: now()
-    };
-    next.issues = validateDraft(next);
-    return persistDraft(next);
+    return saveEnglishTitle(draft, title);
+  }
+
+  // 标题建议要把主图交给模型：文件令牌换成 data URL，读不到图就用文字信息兜底，
+  // 不让一次读图失败把整个弹窗挡住。
+  async function visionImageOf(draft) {
+    const image = heroImage(draft.product?.images);
+    if (!image) return { token: '', name: '', url: '' };
+    const version = submitImage(image);
+    try {
+      const file = await client.files.read(version.token);
+      const prepared = await prepareVisionImage(String(file?.data ?? ''), String(file?.mime || version.mime || ''));
+      return { token: version.token, name: image.name || '', url: 'data:' + prepared.mime + ';base64,' + prepared.data };
+    } catch {
+      return { token: version.token, name: image.name || '', url: '' };
+    }
+  }
+
+  async function suggestTitles(draftId) {
+    const draft = find(draftId);
+    if (!String(draft.product?.title?.zh || draft.source?.title || '').trim()) throw new Error('请先填写 1688 原文。');
+    const image = await visionImageOf(draft);
+    const result = await suggestProductTitles({
+      client,
+      model: state.settings.model,
+      input: sourceInput(draft),
+      imageUrl: image.url,
+      glossary: await readGlossary(draft)
+    });
+    return { titles: result.titles, usedImage: result.usedImage, image: { token: image.token, name: image.name } };
+  }
+
+  async function applyTitle(draftId, title) {
+    const draft = find(draftId);
+    const value = String(title ?? '').replace(/\s+/g, ' ').trim();
+    if (!value) throw new Error('请先选择一条标题。');
+    return saveEnglishTitle(draft, value);
   }
 
   async function prepareImages(draftId) {
@@ -465,7 +518,7 @@ export function createController({ client, now = () => Date.now(), sleep = ms =>
 
   return Object.freeze({
     load, saveSettings, setSecret, clearSecret, startAuthorization, awaitAuthorization, resetAuthorizationTab, authorize, credentialStatus, aiCatalog, imageCatalog,
-    collect, translate, translateOnlyTitle, prepareImages, loadCategories, loadTemplate, suggestCategory, ensureTab,
+    collect, translate, translateOnlyTitle, suggestTitles, applyTitle, prepareImages, loadCategories, loadTemplate, suggestCategory, ensureTab,
     saveDraft, submit, poll, remove, resume,
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
     getState() { return state; },

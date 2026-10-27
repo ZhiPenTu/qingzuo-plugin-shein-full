@@ -94,18 +94,43 @@ export function submitImage(image) {
   return version ? { ...image, ...version } : image;
 }
 
+// 看图写文案只需要一张最能代表商品的图：优先主图，其次第一张未排除且有文件的图。
+export function heroImage(images) {
+  const usable = (Array.isArray(images) ? images : []).filter(image => !image.excluded && submitImage(image).token);
+  return usable.find(image => image.role === 'main') ?? usable[0] ?? null;
+}
+
+export const MAX_VISION_EDGE = 1024;
+export const MAX_VISION_BYTES = 1200000;
+
+// 补全请求里的图片越小越省钱，超过 1024 px 或 1.2 MB 的先缩成白底 JPEG。
+export async function fitForVision(base64, mime) {
+  const length = base64Bytes(base64).length;
+  const size = readImageSize(base64);
+  const large = size ? Math.max(size.width, size.height) > MAX_VISION_EDGE : false;
+  if (!large && length <= MAX_VISION_BYTES && ['image/jpeg', 'image/png', 'image/webp'].includes(mime)) {
+    return { data: base64, mime, size: length };
+  }
+  const converted = await convertToJpeg(base64, mime, 0.86, MAX_VISION_EDGE);
+  return { data: converted.base64, mime: 'image/jpeg', size: base64Bytes(converted.base64).length };
+}
+
 // 1688 的主图经常是 WebP/AVIF。希音只收 JPG/PNG，这里在插件页面内
 // 用 canvas 转成白底 JPEG，不改变图内文字与商品外观。
-export async function convertToJpeg(base64, mime, quality = 0.92) {
+// maxEdge 大于 0 时按长边等比缩小，用于「看图写文案」这类只需要看清版型的场景。
+export async function convertToJpeg(base64, mime, quality = 0.92, maxEdge = 0) {
   const bytes = base64Bytes(base64);
   const bitmap = await createImageBitmap(new Blob([bytes], { type: mime || 'image/webp' }));
+  const scale = maxEdge && Math.max(bitmap.width, bitmap.height) > maxEdge ? maxEdge / Math.max(bitmap.width, bitmap.height) : 1;
+  const width = Math.max(1, Math.round(bitmap.width * scale));
+  const height = Math.max(1, Math.round(bitmap.height * scale));
   const canvas = document.createElement('canvas');
-  canvas.width = bitmap.width;
-  canvas.height = bitmap.height;
+  canvas.width = width;
+  canvas.height = height;
   const context = canvas.getContext('2d');
   context.fillStyle = '#ffffff';
-  context.fillRect(0, 0, bitmap.width, bitmap.height);
-  context.drawImage(bitmap, 0, 0);
+  context.fillRect(0, 0, width, height);
+  context.drawImage(bitmap, 0, 0, width, height);
   if (bitmap.close) bitmap.close();
   const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', quality));
   if (!blob) throw new Error('图片转换失败。');

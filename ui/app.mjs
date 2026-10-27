@@ -1,7 +1,7 @@
 import { createPluginClient } from './sdk.mjs';
 import { createController } from './controller.mjs';
 import { STATUS_LABEL, blockingIssues, validateDraft } from './store.mjs';
-import { ROLE_LABEL, fitForShein, readImageSize, submitImage, translatedVersion, usesTranslation, validateImage } from './images.mjs';
+import { ROLE_LABEL, fitForShein, heroImage, readImageSize, submitImage, translatedVersion, usesTranslation, validateImage } from './images.mjs';
 import { mergeTranslationResults, translationFailures, translationRecord, translationTargets, withSourceVersion } from './image-translate.mjs';
 import { IMAGE_TEXT_PROMPT } from './translate.mjs';
 import { supplyPrice } from './pricing.mjs';
@@ -47,7 +47,8 @@ const state = {
   translateRunning: false,
   translateBatch: null,
   translateTotal: 0,
-  translateDone: 0
+  translateDone: 0,
+  titleDialog: { open: false, loading: false, titles: [], selected: '', usedImage: false }
 };
 
 // APP_SecretKey 只在换取店铺凭据时需要明文：签名走主进程里的凭据，
@@ -873,6 +874,7 @@ function selectDraft(draftId) {
   state.imageId = null;
   state.imageView = 'original';
   if (state.viewer.open) closeViewer();
+  if (state.titleDialog.open) closeTitleDialog();
   render();
   void ensureCategories();
 }
@@ -909,18 +911,148 @@ async function doTranslate() {
   });
 }
 
-async function doTranslateTitle() {
-  await run('正在翻译原文…', async () => {
-    const draft = selectedDraft();
-    if (!draft) throw new Error('先选择草稿。');
-    if (!state.form?.product?.title?.zh?.trim()) throw new Error('请先填写 1688 原文。');
+// 标题建议弹窗：左边是这次交给模型的图，右边是它同时能读到的商品信息，
+// 三个候选选定后才写回草稿，不会替运营自动改标题。
+async function ensureImageUrl(token) {
+  if (!token || state.imageUrls.get(token)) return;
+  try {
+    state.imageUrls.set(token, await client.files.url(token));
+    if (state.titleDialog.open) renderTitlePreview();
+  } catch {}
+}
+
+function titleSourceImage() {
+  const image = heroImage(state.form?.product?.images);
+  return image ? submitImage(image) : null;
+}
+
+function renderTitlePreview() {
+  const image = titleSourceImage();
+  const url = image ? state.imageUrls.get(image.token) || '' : '';
+  const preview = $('title-dialog-preview');
+  preview.hidden = !url;
+  if (url) preview.src = url;
+  else preview.removeAttribute('src');
+  $('title-dialog-empty').hidden = Boolean(url);
+  $('title-dialog-image-note').textContent = image
+    ? (usesTranslation(image) ? '提交用译文' : '1688 原图') + (image.name ? ' · ' + image.name : '')
+    : '先转存图片，AI 才能看图写标题。';
+  if (image && !url) void ensureImageUrl(image.token);
+}
+
+function renderTitleFacts() {
+  const form = state.form;
+  const attributes = (form?.source?.attributes ?? []).map(item => item.name + '：' + item.value);
+  const colors = (form?.product?.skus ?? []).map(item => item.colorEn || item.color).filter(Boolean);
+  const rows = [
+    ['原文标题', form?.product?.title?.zh || form?.source?.title || '未填写'],
+    ['属性', attributes.join('；') || '未识别'],
+    ['颜色', colors.join(' / ') || '未识别'],
+    ['希音类目', form?.product?.category?.sheinCategoryId || '未选择']
+  ];
+  $('title-dialog-facts').replaceChildren(...rows.map(([term, value]) => el('div', { class: 'fact' }, el('dt', { text: term }), el('dd', { text: value }))));
+}
+
+function renderTitleOptions() {
+  const list = $('title-dialog-options');
+  list.replaceChildren();
+  const { titles, selected, loading } = state.titleDialog;
+  if (!titles.length) list.append(el('p', { class: 'hint', text: loading ? '正在生成候选标题…' : '还没有候选标题。' }));
+  titles.forEach((title, index) => {
+    const input = el('input', { type: 'radio', name: 'title-option', value: String(index) });
+    input.checked = selected === String(index);
+    input.addEventListener('change', () => {
+      state.titleDialog.selected = String(index);
+      $('title-dialog-apply').disabled = false;
+    });
+    list.append(el('label', { class: 'title-option' }, input, el('span', { text: title })));
+  });
+  $('title-dialog-apply').disabled = !selected;
+}
+
+function openTitleDialog() {
+  if (!state.form) return;
+  state.titleDialog = { open: true, loading: false, titles: [], selected: '', usedImage: false };
+  setStatus('title-dialog-status', '');
+  $('title-dialog-translate').disabled = false;
+  renderTitlePreview();
+  renderTitleFacts();
+  renderTitleOptions();
+  $('title-dialog').hidden = false;
+  void generateTitles();
+}
+
+async function generateTitles() {
+  const draft = selectedDraft();
+  if (!draft || state.titleDialog.loading) return;
+  if (!state.form?.product?.title?.zh?.trim() && !state.form?.source?.title) {
+    setStatus('title-dialog-status', '请先填写 1688 原文。', true);
+    return;
+  }
+  state.titleDialog.loading = true;
+  state.titleDialog.titles = [];
+  state.titleDialog.selected = '';
+  renderTitleOptions();
+  $('title-dialog-retry').disabled = true;
+  setStatus('title-dialog-status', '正在结合图片和商品信息生成标题…');
+  try {
+    // 原文可能还有没保存的改动，先落到草稿上，标题建议才用的是当前内容。
+    await saveForm();
+    const result = await controller.suggestTitles(draft.id);
+    state.titleDialog.titles = result.titles;
+    state.titleDialog.usedImage = result.usedImage;
+    renderTitlePreview();
+    setStatus('title-dialog-status', result.usedImage ? '' : '当前模型读不到图片，已按商品信息生成。');
+  } catch (error) {
+    setStatus('title-dialog-status', errorText(error), true);
+  } finally {
+    state.titleDialog.loading = false;
+    $('title-dialog-retry').disabled = false;
+    renderTitleOptions();
+  }
+}
+
+async function applySelectedTitle() {
+  const draft = selectedDraft();
+  const title = state.titleDialog.titles[Number(state.titleDialog.selected)];
+  if (!draft || !title) return;
+  $('title-dialog-apply').disabled = true;
+  try {
+    const saved = await controller.applyTitle(draft.id, title);
+    state.form = clone(saved);
+    state.dirty = false;
+    render();
+    closeTitleDialog();
+    setStatus('action-status', '已填入所选标题。');
+  } catch (error) {
+    setStatus('title-dialog-status', errorText(error), true);
+    $('title-dialog-apply').disabled = false;
+  }
+}
+
+function closeTitleDialog() {
+  state.titleDialog.open = false;
+  $('title-dialog').hidden = true;
+}
+
+// 需要逐字准确时仍可以只按原文直译，不经过标题建议。
+async function translateSourceTitle() {
+  const draft = selectedDraft();
+  if (!draft) return;
+  $('title-dialog-translate').disabled = true;
+  setStatus('title-dialog-status', '正在按原文直译…');
+  try {
     await saveForm();
     const saved = await controller.translateOnlyTitle(draft.id);
     state.form = clone(saved);
     state.dirty = false;
     render();
+    closeTitleDialog();
     setStatus('action-status', '英文标题已按原文更新。');
-  });
+  } catch (error) {
+    setStatus('title-dialog-status', errorText(error), true);
+    $('title-dialog-translate').disabled = false;
+  }
 }
 
 async function doPrepareImages() {
@@ -1546,7 +1678,12 @@ function bindEvents() {
 
   $('title-en').addEventListener('input', event => { state.form.product.title.en = event.target.value; markDirty(); });
   $('title-zh').addEventListener('input', event => { state.form.product.title.zh = event.target.value; markDirty(); });
-  $('translate-zh-title').addEventListener('click', () => void doTranslateTitle());
+  $('translate-zh-title').addEventListener('click', openTitleDialog);
+  $('title-dialog-cancel').addEventListener('click', closeTitleDialog);
+  $('title-dialog-translate').addEventListener('click', () => void translateSourceTitle());
+  $('title-dialog-retry').addEventListener('click', () => void generateTitles());
+  $('title-dialog-apply').addEventListener('click', () => void applySelectedTitle());
+  $('title-dialog').addEventListener('click', event => { if (event.target === $('title-dialog')) closeTitleDialog(); });
   $('bullets').addEventListener('input', event => {
     state.form.product.bullets = event.target.value.split('\n').map(line => line.trim()).filter(Boolean).map(line => ({ en: line }));
     markDirty();
@@ -1606,6 +1743,7 @@ function bindEvents() {
       if (event.key === '-') { zoomViewer(0.8); return; }
     }
     if (event.key === 'Escape' && !$('translate-dialog').hidden) closeTranslateDialog();
+    else if (event.key === 'Escape' && !$('title-dialog').hidden) closeTitleDialog();
   });
   $('load-template').addEventListener('click', () => void doLoadTemplate());
   $('refresh-categories').addEventListener('click', () => void doRefreshCategories());

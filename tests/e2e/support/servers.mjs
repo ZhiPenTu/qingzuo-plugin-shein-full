@@ -32,6 +32,13 @@ export const TRANSLATION = Object.freeze({
   ]
 });
 
+// 标题建议走带图的补全请求，假服务据此返回三条候选，也顺带证明图片确实发到了模型服务。
+export const TITLE_SUGGESTIONS = Object.freeze([
+  'Cream cotton knit scarf with ribbed texture',
+  'Winter warm knit scarf for couples',
+  'Soft everyday knit scarf in cream and black'
+]);
+
 // 只有这些接口会真正动希音后台：查重、发品权限、额度、图片上传、发品、审核状态。
 // 编辑阶段允许调用只读的模板与币种接口，所以"未确认零调用"针对的是这一组。
 export const SUBMISSION_PATHS = Object.freeze(new Set([
@@ -186,8 +193,10 @@ export async function startGateway() {
       return;
     }
     if (pathname === '/v1/chat/completions') {
+      const withImage = body.toString('utf8').includes('"image_url"');
+      const content = withImage ? { titles: TITLE_SUGGESTIONS } : TRANSLATION;
       response.writeHead(200, { 'content-type': 'application/json' });
-      response.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(TRANSLATION) } }] }));
+      response.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(content) } }] }));
       return;
     }
     if (pathname === '/open-api/goods/upload-pic') {

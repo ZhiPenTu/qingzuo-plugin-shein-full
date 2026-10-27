@@ -346,6 +346,28 @@
   </div>
 </div>
 
+<div id="title-dialog" class="dialog" hidden>
+  <div class="dialog-card wide" role="dialog" aria-modal="true" aria-labelledby="title-dialog-heading">
+    <h2 id="title-dialog-heading">AI 爆款标题</h2>
+    <div class="title-dialog-body">
+      <figure class="title-dialog-image">
+        <img id="title-dialog-preview" alt="商品主图" hidden>
+        <div id="title-dialog-empty" class="thumb-empty">还没有转存图片</div>
+        <figcaption id="title-dialog-image-note" class="hint"></figcaption>
+      </figure>
+      <dl id="title-dialog-facts" class="facts"></dl>
+    </div>
+    <p id="title-dialog-status" class="status" role="status"></p>
+    <div id="title-dialog-options" class="title-options" role="radiogroup" aria-label="标题候选"></div>
+    <div class="dialog-actions">
+      <button id="title-dialog-cancel" class="secondary" type="button">取消</button>
+      <button id="title-dialog-translate" class="secondary" type="button">按原文直译</button>
+      <button id="title-dialog-retry" class="secondary" type="button">重新生成</button>
+      <button id="title-dialog-apply" class="primary" type="button" disabled>使用所选标题</button>
+    </div>
+  </div>
+</div>
+
 <div id="submit-dialog" class="dialog" hidden>
   <div class="dialog-card" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
     <h2 id="dialog-title">确认提交到希音</h2>

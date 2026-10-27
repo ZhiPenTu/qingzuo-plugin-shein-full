@@ -1,6 +1,6 @@
 {
   "name": "@commerce/plugin-shein-full",
-  "version": "0.3.8",
+  "version": "0.3.9",
   "private": true,
   "type": "module",
   "commerce": {
@@ -9,9 +9,9 @@
     "title": "希音全托管铺货",
     "description": "从 1688 采集商品，翻译成英文并生成希音全托管草稿，人工审核确认后才提交发品",
     "category": "电商工具",
-    "api": "^1.4.0",
+    "api": "^1.5.0",
     "ui": "ui/index.html",
-    "releaseNotes": "新增商品图片大图查看器、原图/译文滑杆对比与图内文字翻译能力，优化图片工作区与窄屏分栏排版。",
+    "releaseNotes": "「翻译」改为 AI 爆款标题弹窗：结合商品主图与 1688 信息给出 3 个候选标题，选定后写入草稿，另可一键按原文直译。",
     "permissions": {
       "files": true,
       "storage": true,
@@ -57,7 +57,7 @@
     "preview": "node scripts/preview.mjs"
   },
   "dependencies": {
-    "@commerce/plugin-sdk": "file:vendor/commerce-plugin-sdk-1.4.0.tgz"
+    "@commerce/plugin-sdk": "file:vendor/commerce-plugin-sdk-1.5.0.tgz"
   },
   "devDependencies": {
     "@playwright/test": "^1.64.0"

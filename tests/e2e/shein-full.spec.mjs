@@ -6,7 +6,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { pack } from '@commerce/plugin-sdk/cli';
-import { APP_ID, APP_SECRET, AUTHORIZE_HOST, CALLBACK_HOST, OFFER_URL, OPEN_KEY_ID, SECRET_KEY, TEMP_TOKEN, TRANSLATION, startGateway, startStorefront } from './support/servers.mjs';
+import { APP_ID, APP_SECRET, AUTHORIZE_HOST, CALLBACK_HOST, OFFER_URL, OPEN_KEY_ID, SECRET_KEY, TEMP_TOKEN, TITLE_SUGGESTIONS, TRANSLATION, startGateway, startStorefront } from './support/servers.mjs';
 
 const repo = process.cwd();
 const pkg = JSON.parse(readFileSync(path.join(repo, 'package.json'), 'utf8'));
@@ -135,17 +135,13 @@ test('1688 采集到希音提交：确认前零发品调用，签名与幂等键
     await expect(shell.locator('.commerce-browser-pane')).toBeVisible();
     await expect.poll(() => app.context().pages().some(candidate => candidate.url() === OFFER_URL)).toBe(true);
 
-    // 运营可以直接修正 1688 原文，再只把标题翻译回草稿。
+    // 运营可以直接修正 1688 原文，翻译文案用的是改过的原文。
     await plugin.locator('#title-zh').fill('纯棉针织围巾 冬季加厚');
-    await plugin.locator('#translate-zh-title').click();
-    await expect(plugin.locator('#action-status')).toHaveText('英文标题已按原文更新。', { timeout: 90000 });
-    await expect(plugin.locator('#title-en')).toHaveValue(TRANSLATION.title);
-    const titleCall = gateway.calls.filter(call => call.path === '/v1/chat/completions').at(-1);
-    expect(titleCall.body.toString('utf8')).toContain('纯棉针织围巾 冬季加厚');
-
     await plugin.locator('#translate').click();
     await expect(plugin.locator('#action-status')).toHaveText('已生成英文文案，请逐项校对。', { timeout: 90000 });
     await expect(plugin.locator('#title-en')).toHaveValue(TRANSLATION.title);
+    const titleCall = gateway.calls.filter(call => call.path === '/v1/chat/completions').at(-1);
+    expect(titleCall.body.toString('utf8')).toContain('纯棉针织围巾 冬季加厚');
 
     // 授权后类目从店铺接口读取，运营只需按层级选择末级类目。
     const categorySelects = plugin.locator('#category-picker select');
@@ -171,6 +167,25 @@ test('1688 采集到希音提交：确认前零发品调用，签名与幂等键
     await expect(plugin.locator('#action-status')).toHaveText(/已转存 2 张图片/, { timeout: 120000 });
     await expect(plugin.locator('#image-hint')).toHaveText('2 张可提交');
     await plugin.locator('#tab-content').click();
+
+    // 图片转存后再点「翻译」：弹窗把主图和商品信息一起交给 AI，
+    // 给出三条候选，选定哪一条才写回英文标题。
+    await plugin.locator('#translate-zh-title').click();
+    await expect(plugin.locator('#title-dialog')).toBeVisible();
+    await expect(plugin.locator('#title-dialog-facts')).toContainText('纯棉针织围巾 冬季加厚');
+    await expect(plugin.locator('#title-dialog-preview')).toBeVisible();
+    await expect(plugin.locator('.title-option')).toHaveCount(3, { timeout: 90000 });
+    const suggestionCall = gateway.calls.filter(call => call.path === '/v1/chat/completions').at(-1);
+    const suggestionBody = suggestionCall.body.toString('utf8');
+    expect(suggestionBody).toContain('"image_url"');
+    expect(suggestionBody).toContain('data:image/png;base64,');
+    expect(suggestionBody).toContain('纯棉针织围巾 冬季加厚');
+    await expect(plugin.locator('#title-dialog-apply')).toBeDisabled();
+    await plugin.locator('.title-option').nth(1).click();
+    await expect(plugin.locator('#title-dialog-apply')).toBeEnabled();
+    await plugin.locator('#title-dialog-apply').click();
+    await expect(plugin.locator('#title-dialog')).toBeHidden();
+    await expect(plugin.locator('#title-en')).toHaveValue(TITLE_SUGGESTIONS[1]);
 
     const rows = plugin.locator('#sku-body tr');
     await expect(rows).toHaveCount(2);
@@ -236,7 +251,7 @@ test('1688 采集到希音提交：确认前零发品调用，签名与幂等键
     expect(publish.main_site).toBe('shein');
     expect(publish.category_id).toBe(1234);
     expect(publish.product_type_id).toBe(5678);
-    expect(publish.multi_language_name_list).toEqual([{ language: 'en', name: TRANSLATION.title }]);
+    expect(publish.multi_language_name_list).toEqual([{ language: 'en', name: TITLE_SUGGESTIONS[1] }]);
     expect(publish.skc_list).toHaveLength(2);
     expect(publish.skc_list.map(skc => skc.sku_list[0].supplier_price)).toEqual([16.88, 17.55]);
     expect(publish.skc_list.map(skc => skc.sale_attribute.attribute_value_id)).toEqual([9001, 9002]);
