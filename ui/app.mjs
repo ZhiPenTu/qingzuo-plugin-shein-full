@@ -1,7 +1,9 @@
 import { createPluginClient } from './sdk.mjs';
 import { createController } from './controller.mjs';
 import { STATUS_LABEL, blockingIssues, validateDraft } from './store.mjs';
-import { ROLE_LABEL, validateImage } from './images.mjs';
+import { ROLE_LABEL, fitForShein, readImageSize, submitImage, translatedVersion, usesTranslation, validateImage } from './images.mjs';
+import { mergeTranslationResults, translationFailures, translationRecord, translationTargets, withSourceVersion } from './image-translate.mjs';
+import { IMAGE_TEXT_PROMPT } from './translate.mjs';
 import { supplyPrice } from './pricing.mjs';
 import { SECRET_CREDENTIAL } from './shein-client.mjs';
 import { callbackUrlOf } from './shein-auth.mjs';
@@ -14,6 +16,7 @@ const $ = id => document.getElementById(id);
 const IMAGE_ROLES = [['main', '主图'], ['detail', '详情图']];
 const AUDIT_LABEL = { PENDING: '希音审核中', APPROVED: '审核通过', REJECTED: '已驳回' };
 const CURRENCY_SYMBOL = { USD: '$', EUR: '€', GBP: '£', CNY: '¥', JPY: '¥' };
+const TRANSLATE_POLL_MS = 1200;
 
 const state = {
   selectedId: null,
@@ -31,7 +34,20 @@ const state = {
   credentials: null,
   settingsOpen: false,
   credentialRevision: 0,
-  authCancelled: false
+  authCancelled: false,
+  tab: 'content',
+  imageId: null,
+  imageView: 'original',
+  compare: 50,
+  viewer: { open: false, images: [], index: 0, version: 'original', zoom: 1 },
+  imageModels: [],
+  imageModelsLoading: false,
+  imageModelsError: '',
+  imageModelsPromise: null,
+  translateRunning: false,
+  translateBatch: null,
+  translateTotal: 0,
+  translateDone: 0
 };
 
 // APP_SecretKey 只在换取店铺凭据时需要明文：签名走主进程里的凭据，
@@ -124,7 +140,24 @@ function syncForm() {
 function render() {
   renderDrafts();
   const form = syncForm();
+  renderTabs();
   renderReview(form);
+}
+
+// 窄窗口下面板内容很长，分区比纵向堆叠更好用；当前分区跟着草稿走，切换草稿不跳回第一页。
+function renderTabs() {
+  for (const [name, pane] of [['content', 'pane-content'], ['images', 'pane-images'], ['source', 'pane-source']]) {
+    const tab = $('tab-' + name);
+    const active = state.tab === name;
+    tab.classList.toggle('is-active', active);
+    tab.setAttribute('aria-selected', active ? 'true' : 'false');
+    $(pane).hidden = !active;
+  }
+}
+
+function selectTab(name) {
+  state.tab = name;
+  renderTabs();
 }
 
 function renderDrafts() {
@@ -217,14 +250,24 @@ function renderSource(form) {
     grid.append(el('p', { class: 'hint', text: '图片转存后会显示在这里，和终稿对照。' }));
     return;
   }
-  for (const image of images) {
+  images.forEach((image, index) => {
+    // 原貌页只看 1688 原图；译文在查看器里切换对比。
     const url = state.imageUrls.get(image.token) || '';
-    const cell = el('figure', { class: 'source-thumb' });
+    const cell = el('button', {
+      type: 'button',
+      class: 'source-thumb',
+      title: '查看大图：' + (image.name || '图片 ' + (index + 1)),
+      onclick: () => openViewer('original', images, index)
+    });
     if (url) cell.append(el('img', { src: url, alt: image.name || '原图', loading: 'lazy' }));
     else cell.append(el('div', { class: 'thumb-empty', text: '无预览' }));
-    cell.append(el('figcaption', { text: (image.excluded ? '已排除 · ' : '') + (ROLE_LABEL[image.role] ?? image.role) }));
+    cell.append(el('span', {
+      class: 'source-caption',
+      text: (image.excluded ? '已排除 · ' : '') + (ROLE_LABEL[image.role] ?? image.role)
+    }));
+    if (translatedVersion(image)) cell.append(el('span', { class: 'source-flag', text: '译' }));
     grid.append(cell);
-  }
+  });
 }
 
 function renderForm(form) {
@@ -443,54 +486,217 @@ function renderSkus(form) {
   if (!skus.length) body.append(el('tr', {}, el('td', { colspan: '7', class: 'hint', text: '没有识别到 SKU。' })));
 }
 
+function imageUrlOf(image) {
+  if (!image) return '';
+  const version = usesTranslation(image) ? translatedVersion(image) : null;
+  return state.imageUrls.get(version ? version.token : image.token) || '';
+}
+
+function currentImages() {
+  return state.form?.product?.images ?? [];
+}
+
+function currentImage() {
+  const images = currentImages();
+  return images.find(image => image.id === state.imageId) ?? images[0] ?? null;
+}
+
+// 只有存在译文时才允许切到译文或对比，否则按钮会把用户带到空白区。
+function imageViewOf(image) {
+  if (!translatedVersion(image)) return 'original';
+  return ['original', 'translated', 'compare'].includes(state.imageView) ? state.imageView : 'original';
+}
+
+function imageTokensOf(image) {
+  const tokens = [];
+  if (image?.token) tokens.push(image.token);
+  const translated = translatedVersion(image);
+  if (translated?.token) tokens.push(translated.token);
+  return tokens;
+}
+
+function selectImage(imageId) {
+  state.imageId = imageId;
+  state.viewer.zoom = 1;
+  renderImages(state.form);
+}
+
 function renderImages(form) {
-  const host = $('image-list');
-  const images = form.product?.images ?? [];
+  renderStage(form);
+  renderFilmstrip(form);
+  renderImageControls(form);
+}
+
+function renderStage(form) {
+  const host = $('image-stage');
   host.replaceChildren();
-  if (!images.length) {
-    host.append(el('p', { class: 'hint', text: '还没有转存图片。先从 1688 原页转存，再逐张确认。' }));
-    $('image-hint').textContent = '';
+  const image = form ? currentImage() : null;
+  state.imageId = image?.id ?? null;
+  if (!image) {
+    host.classList.remove('is-excluded');
+    host.append(el('p', { class: 'stage-empty', text: '还没有转存图片。先在「1688 原貌」里对照商品，再点「从 1688 转存图片」。' }));
     return;
   }
-  $('image-hint').textContent = `${images.filter(image => !image.excluded && image.token).length} 张可提交`;
-  images.forEach((image, index) => {
-    const url = state.imageUrls.get(image.token) || '';
-    const thumb = el('div', { class: 'thumb' });
-    if (url) thumb.append(el('img', { src: url, alt: image.name || '商品图片', loading: 'lazy' }));
-    else thumb.append(el('span', { class: 'thumb-empty', text: '无预览' }));
-
-    const role = el('select', {});
-    for (const [value, label] of IMAGE_ROLES) role.append(el('option', { value, text: label }));
-    role.value = image.role === 'main' ? 'main' : 'detail';
-    role.addEventListener('change', () => {
-      state.form.product.images[index].role = role.value;
-      markDirty();
-      renderImages(state.form);
-      renderSource(state.form);
-    });
-
-    const exclude = el('input', { type: 'checkbox' });
-    exclude.checked = Boolean(image.excluded);
-    exclude.addEventListener('change', () => {
-      state.form.product.images[index].excluded = exclude.checked;
-      markDirty();
-      renderImages(state.form);
-      renderSource(state.form);
-    });
-
-    const error = validateImage(image).find(issue => issue.level === 'error');
-    const meta = el('div', { class: 'image-meta' },
-      el('strong', { text: image.name || image.id || '图片' }),
-      el('span', { class: 'hint', text: `${image.width || '?'}×${image.height || '?'} · ${formatSize(image.size)}` + (image.uploadedUrl ? ' · 已上传希音' : '') }),
-      error ? el('span', { class: 'image-error', text: error.message }) : null
+  host.classList.toggle('is-excluded', Boolean(image.excluded));
+  const originalUrl = state.imageUrls.get(image.token) || '';
+  const translated = translatedVersion(image);
+  const translatedUrl = translated ? state.imageUrls.get(translated.token) || '' : '';
+  if (!originalUrl) {
+    host.append(el('p', { class: 'stage-empty', text: '正在加载预览…' }));
+    return;
+  }
+  const view = imageViewOf(image);
+  if (view === 'compare' && translatedUrl) {
+    const overlay = el('img', { src: translatedUrl, alt: '译文' });
+    overlay.style.clipPath = 'inset(0 0 0 ' + state.compare + '%)';
+    const compare = el('div', { class: 'stage-compare' },
+      el('img', { src: originalUrl, alt: '原图' }),
+      overlay,
+      el('span', { class: 'stage-chip left', text: '原图' }),
+      el('span', { class: 'stage-chip right', text: '译文' })
     );
+    compare.addEventListener('click', () => openViewer('compare'));
+    host.append(compare);
+    return;
+  }
+  const useTranslated = view === 'translated' && translatedUrl;
+  const node = el('img', { class: 'stage-image', src: useTranslated ? translatedUrl : originalUrl, alt: image.name || '商品图片' });
+  node.addEventListener('click', () => openViewer(useTranslated ? 'translated' : 'original'));
+  host.append(node);
+}
 
-    host.append(el('div', { class: 'image-row' + (image.excluded ? ' is-excluded' : '') },
-      thumb,
-      meta,
-      el('div', { class: 'image-controls' }, role, el('label', { class: 'check' }, exclude, '排除'))
-    ));
+function renderFilmstrip(form) {
+  const list = $('image-list');
+  list.replaceChildren();
+  const images = currentImages();
+  const active = currentImage();
+  images.forEach((image, index) => {
+    const url = imageUrlOf(image);
+    const button = el('button', {
+      type: 'button',
+      class: 'film' + (image.id === active?.id ? ' is-active' : '') + (image.excluded ? ' is-excluded' : ''),
+      title: image.name || '图片 ' + (index + 1)
+    });
+    if (url) button.append(el('img', { src: url, alt: '', loading: 'lazy' }));
+    else button.append(el('span', { class: 'film-empty', text: '无预览' }));
+    button.append(el('span', { class: 'film-index', text: String(index + 1) }));
+    if (translatedVersion(image) && usesTranslation(image)) button.append(el('span', { class: 'film-flag', text: '译' }));
+    button.addEventListener('click', () => selectImage(image.id));
+    list.append(el('li', {}, button));
   });
+}
+
+function renderImageControls(form) {
+  const images = currentImages();
+  const image = currentImage();
+  const enabled = Boolean(image);
+  const translated = enabled ? translatedVersion(image) : null;
+  for (const [id, name] of [['view-original', 'original'], ['view-translated', 'translated'], ['view-compare', 'compare']]) {
+    const node = $(id);
+    const active = enabled && imageViewOf(image) === name;
+    node.classList.toggle('is-active', active);
+    node.setAttribute('aria-pressed', active ? 'true' : 'false');
+    node.disabled = Boolean(state.busy) || !enabled || (name !== 'original' && !translated);
+  }
+  $('compare-control').hidden = !(enabled && imageViewOf(image) === 'compare');
+  $('compare-range').value = String(state.compare);
+
+  const role = $('image-role');
+  role.value = image?.role === 'main' ? 'main' : 'detail';
+  role.disabled = Boolean(state.busy) || !enabled;
+  const excluded = $('image-excluded');
+  excluded.checked = Boolean(image?.excluded);
+  excluded.disabled = Boolean(state.busy) || !enabled;
+
+  $('image-counter').textContent = enabled ? `${images.indexOf(image) + 1} / ${images.length}` : '';
+  $('image-version-note').textContent = translated ? (usesTranslation(image) ? '提交时用译文' : '提交时用原图') : '';
+  $('image-revert').hidden = !(translated && usesTranslation(image));
+  $('image-revert').disabled = Boolean(state.busy);
+  $('image-zoom').disabled = Boolean(state.busy) || !originalAvailable(image);
+
+  const submittable = images.filter(item => !item.excluded && submitImage(item).token).length;
+  const translatedCount = images.filter(item => !item.excluded && translatedVersion(item)).length;
+  $('image-hint').textContent = form && images.length
+    ? `${submittable} 张可提交` + (translatedCount ? ` · ${translatedCount} 张已有译文` : '')
+    : '';
+}
+
+function originalAvailable(image) {
+  return Boolean(image?.token && state.imageUrls.get(image.token));
+}
+
+function openViewer(version = 'original', images = null, startIndex = null) {
+  const list = images ?? currentImages();
+  const image = startIndex === null ? currentImage() : list[startIndex];
+  if (!image) return;
+  if (!originalAvailable(image)) {
+    setStatus('action-status', '图片还在加载，稍后再查看大图。');
+    return;
+  }
+  const translated = translatedVersion(image);
+  state.viewer = {
+    open: true,
+    images: list,
+    index: Math.max(0, list.indexOf(image)),
+    version: version === 'translated' && translated ? 'translated' : 'original',
+    zoom: 1
+  };
+  $('viewer').hidden = false;
+  renderViewer();
+  $('viewer-close').focus();
+}
+
+function closeViewer() {
+  state.viewer.open = false;
+  $('viewer').hidden = true;
+}
+
+function renderViewer() {
+  if (!state.viewer.open) return;
+  const images = state.viewer.images;
+  const image = images[state.viewer.index] ?? null;
+  if (!image) {
+    closeViewer();
+    return;
+  }
+  const translated = translatedVersion(image);
+  const version = state.viewer.version === 'translated' && translated ? 'translated' : 'original';
+  const source = version === 'translated' ? translated : image;
+  const url = state.imageUrls.get(source.token) || '';
+  $('viewer-title').textContent = image.name || '图片 ' + (state.viewer.index + 1);
+  $('viewer-meta').textContent = `${source.width || '?'}×${source.height || '?'} · ${formatSize(source.size)} · ${ROLE_LABEL[image.role] ?? image.role}` + (image.excluded ? ' · 已排除' : '');
+  const node = $('viewer-image');
+  node.src = url;
+  node.alt = image.name || '商品图片';
+  const zoomed = state.viewer.zoom > 1;
+  node.classList.toggle('is-zoomed', zoomed);
+  // 适应视图交给样式表（绝对定位 + object-fit: contain），放大时才写行内尺寸。
+  node.style.width = zoomed ? Math.round(state.viewer.zoom * 100) + '%' : '';
+  node.style.height = zoomed ? 'auto' : '';
+  for (const [id, name] of [['viewer-original', 'original'], ['viewer-translated', 'translated']]) {
+    const button = $(id);
+    const active = version === name;
+    button.classList.toggle('is-active', active);
+    button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    button.disabled = name === 'translated' && !translated;
+  }
+  $('viewer-counter').textContent = `${state.viewer.index + 1} / ${images.length}`;
+  $('viewer-prev').disabled = images.length < 2;
+  $('viewer-next').disabled = images.length < 2;
+}
+
+function stepViewer(delta) {
+  const images = state.viewer.images;
+  if (!images.length) return;
+  state.viewer.index = (state.viewer.index + delta + images.length) % images.length;
+  state.viewer.zoom = 1;
+  state.viewer.version = 'original';
+  renderViewer();
+}
+
+function zoomViewer(factor) {
+  state.viewer.zoom = Math.min(6, Math.max(1, Math.round(state.viewer.zoom * factor * 10) / 10));
+  renderViewer();
 }
 
 function renderIssues(form) {
@@ -556,10 +762,11 @@ function updateGate() {
   const form = state.form;
   const busy = state.busy;
   $('collect').disabled = busy || !$('source-url').value.trim();
-  for (const id of ['translate', 'save', 'prepare-images', 'load-template', 'refresh-categories', 'suggest-category', 'delete-draft']) {
+  for (const id of ['translate', 'save', 'prepare-images', 'load-template', 'refresh-categories', 'suggest-category', 'delete-draft', 'translate-images']) {
     const node = $(id);
     if (node) node.disabled = busy || !draft;
   }
+  if (form) renderImageControls(form);
   $('open-source').disabled = busy || !draft?.source?.url;
   $('category-confirmed').disabled = busy || !draft;
   for (const select of $('category-picker').querySelectorAll('select')) select.disabled = busy || !draft;
@@ -580,11 +787,13 @@ function updateGate() {
 async function loadImageUrls() {
   const form = state.form;
   if (!form) return;
-  const tokens = (form.product?.images ?? []).map(image => image.token).filter(token => token && !state.imageUrls.has(token));
-  if (!tokens.length) return;
-  for (const token of tokens) state.imageUrls.set(token, '');
+  // 原图与译文的文件令牌都要拿到预览地址，对比和切换版本才不会空白。
+  const tokens = [...new Set((form.product?.images ?? []).flatMap(imageTokensOf))];
+  const missing = tokens.filter(token => !state.imageUrls.has(token));
+  if (!missing.length) return;
+  for (const token of missing) state.imageUrls.set(token, '');
   let changed = false;
-  for (const token of tokens) {
+  for (const token of missing) {
     try {
       state.imageUrls.set(token, await client.files.url(token));
       changed = true;
@@ -595,6 +804,7 @@ async function loadImageUrls() {
   if (changed && state.form) {
     renderImages(state.form);
     renderSource(state.form);
+    if (state.viewer.open) renderViewer();
   }
 }
 
@@ -660,6 +870,9 @@ function selectDraft(draftId) {
   state.form = null;
   state.dirty = false;
   state.suggestions = [];
+  state.imageId = null;
+  state.imageView = 'original';
+  if (state.viewer.open) closeViewer();
   render();
   void ensureCategories();
 }
@@ -707,6 +920,269 @@ async function doPrepareImages() {
     const count = (prepared.product?.images ?? []).filter(image => image.token).length;
     setStatus('action-status', count ? `已转存 ${count} 张图片，请确认主图和排除项。` : '没有转存到图片，请确认页面已加载完成。', !count);
   });
+}
+
+function setImageView(view) {
+  state.imageView = view;
+  renderImages(state.form);
+}
+
+function setImageRole(role) {
+  const image = currentImage();
+  if (!image || !state.form) return;
+  const index = state.form.product.images.findIndex(item => item.id === image.id);
+  if (index < 0) return;
+  state.form.product.images[index].role = role === 'main' ? 'main' : 'detail';
+  markDirty();
+  renderImages(state.form);
+  renderSource(state.form);
+}
+
+function setImageExcluded(excluded) {
+  const image = currentImage();
+  if (!image || !state.form) return;
+  const index = state.form.product.images.findIndex(item => item.id === image.id);
+  if (index < 0) return;
+  state.form.product.images[index].excluded = Boolean(excluded);
+  markDirty();
+  renderImages(state.form);
+  renderSource(state.form);
+}
+
+// 切回原图只是换提交版本，译文文件仍然保留，随时可以再切回来。
+function revertToOriginal() {
+  const image = currentImage();
+  if (!image || !state.form) return;
+  const index = state.form.product.images.findIndex(item => item.id === image.id);
+  if (index < 0) return;
+  state.form.product.images[index] = withSourceVersion(state.form.product.images[index], false);
+  markDirty();
+  state.imageView = 'original';
+  renderImages(state.form);
+}
+
+function fillImageModelSelect(select, models, current = '') {
+  const previous = select.value || current || '';
+  select.replaceChildren();
+  if (!models.length) {
+    select.append(new Option('没有可用图片模型', ''));
+    select.value = '';
+    return;
+  }
+  for (const model of models) {
+    const label = model.title && model.title !== model.id ? model.title + '（' + model.id + '）' : model.id;
+    select.append(new Option(label, model.id));
+  }
+  select.value = models.some(model => model.id === previous) ? previous : models[0].id;
+}
+
+function syncImageModelSelects() {
+  const current = controller.getState().settings.imageModel || '';
+  fillImageModelSelect($('image-model'), state.imageModels, current);
+  fillImageModelSelect($('translate-model'), state.imageModels, current);
+}
+
+async function loadImageModels() {
+  if (state.imageModelsPromise) return state.imageModelsPromise;
+  state.imageModelsLoading = true;
+  setStatus('image-model-status', '正在读取图片模型…');
+  const task = (async () => {
+    try {
+      state.imageModels = await controller.imageCatalog();
+      state.imageModelsError = '';
+      setStatus('image-model-status', state.imageModels.length
+        ? `可用 ${state.imageModels.length} 个图片模型`
+        : '没有可用图片模型，请先在轻作 AI 设置里配置。', !state.imageModels.length);
+    } catch (error) {
+      state.imageModels = [];
+      state.imageModelsError = errorText(error);
+      setStatus('image-model-status', state.imageModelsError, true);
+    } finally {
+      state.imageModelsLoading = false;
+      state.imageModelsPromise = null;
+      syncImageModelSelects();
+    }
+    return state.imageModels;
+  })();
+  state.imageModelsPromise = task;
+  return task;
+}
+
+function openTranslateDialog() {
+  if (!state.form) return;
+  syncImageModelSelects();
+  if (!state.imageModels.length) void loadImageModels();
+  const image = currentImage();
+  const translated = image ? translatedVersion(image) : null;
+  const total = translationTargets(state.form.product?.images ?? [], { scope: 'all' }).length;
+  setStatus('translate-status', translated ? '这张图已有译文，重新生成会覆盖当前译文。' : '');
+  const progress = $('translate-progress');
+  progress.hidden = true;
+  progress.max = 1;
+  progress.value = 0;
+  $('translate-scope-current').checked = true;
+  $('translate-scope-current').disabled = !image;
+  $('translate-scope-all').disabled = total === 0;
+  $('translate-run').disabled = false;
+  $('translate-cancel').textContent = '取消';
+  $('translate-dialog').hidden = false;
+  $('translate-run').focus();
+}
+
+function closeTranslateDialog() {
+  if (state.translateRunning) {
+    void cancelTranslateBatch();
+    return;
+  }
+  $('translate-dialog').hidden = true;
+}
+
+async function cancelTranslateBatch() {
+  const batch = state.translateBatch;
+  setStatus('translate-status', '正在中止…');
+  if (batch?.id) await client.ai.batch.cancel({ id: batch.id }).catch(() => {});
+}
+
+async function waitForBatch(id, timeoutMs = 600000) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const batch = await client.ai.batch.get({ id });
+    state.translateBatch = batch;
+    const items = batch.items ?? [];
+    const done = items.filter(item => !['pending', 'running'].includes(item.state)).length;
+    state.translateDone = done;
+    $('translate-progress').value = done;
+    setStatus('translate-status', `正在生成译文 ${done}/${items.length || state.translateTotal}…`);
+    if (['finished', 'canceled', 'interrupted'].includes(batch.state)) return batch;
+    if (Date.now() > deadline) {
+      await client.ai.batch.cancel({ id }).catch(() => {});
+      throw new Error('等待译文超时，可以稍后重试。');
+    }
+    await new Promise(resolve => setTimeout(resolve, TRANSLATE_POLL_MS));
+  }
+}
+
+function translationName(image) {
+  const base = String(image?.name || image?.id || 'image').replace(/\.[^./]+$/, '');
+  return base + '-en.jpg';
+}
+
+// 批量任务只把原图交给模型；结果先落成草稿里的持久令牌，再回填到草稿。
+async function collectTranslations(batch, targets, modelId) {
+  const results = [];
+  const items = batch.items ?? [];
+  for (let index = 0; index < items.length; index += 1) {
+    const item = items[index];
+    const image = targets[index] ?? null;
+    if (!image || item.state !== 'succeeded') continue;
+    let preview = null;
+    try {
+      preview = await client.ai.batch.preview({ id: batch.id, itemId: item.id });
+      const file = await client.files.read(preview.token);
+      const fitted = await fitForShein(file.data, file.mime || item.outputMime || '');
+      const dimensions = readImageSize(fitted.data) ?? { width: 0, height: 0 };
+      const saved = await client.storage.saveFile({ data: fitted.data, filename: translationName(image), mime: fitted.mime });
+      results.push({
+        imageId: image.id,
+        translated: translationRecord({
+          token: saved.token,
+          mime: fitted.mime,
+          size: fitted.size,
+          width: fitted.width || dimensions.width || image.width,
+          height: fitted.height || dimensions.height || image.height,
+          modelId,
+          createdAt: Date.now()
+        })
+      });
+    } catch {
+      // 单张失败不影响其它图片，最后按成功数量提示。
+    } finally {
+      if (preview?.token) await client.files.release(preview.token).catch(() => {});
+    }
+  }
+  return results;
+}
+
+async function applyTranslations(results) {
+  if (!results.length || !state.form) return;
+  const previous = state.form.product?.images ?? [];
+  const replaced = new Map(results.map(item => [item.imageId, item.translated.token]));
+  // 重新生成会换掉旧译文，旧文件不再被引用就直接释放，避免草稿越攒越大。
+  const stale = previous
+    .filter(image => image.translated?.token && replaced.has(image.id) && image.translated.token !== replaced.get(image.id))
+    .map(image => image.translated.token);
+  state.form.product.images = mergeTranslationResults(previous, results);
+  state.imageId = results[0].imageId;
+  state.imageView = 'translated';
+  await saveForm();
+  for (const token of stale) await client.storage.removeFile(token).catch(() => {});
+  render();
+}
+
+async function runImageTranslation() {
+  if (state.translateRunning || !state.form) return;
+  const modelId = $('translate-model').value;
+  if (!modelId) {
+    setStatus('translate-status', '请先选择图片模型。', true);
+    return;
+  }
+  const scope = $('translate-scope-all').checked ? 'all' : 'current';
+  const targets = translationTargets(state.form.product?.images ?? [], { scope, imageId: currentImage()?.id ?? null });
+  if (!targets.length) {
+    setStatus('translate-status', '没有可翻译的图片，请先转存图片并取消排除。', true);
+    return;
+  }
+  // 译文要写回草稿，先把表单里未保存的改动落到草稿上。
+  try {
+    await saveForm();
+  } catch (error) {
+    setStatus('translate-status', errorText(error), true);
+    return;
+  }
+  const directory = await client.files.pickDirectory();
+  if (!directory) {
+    setStatus('translate-status', '已取消，未生成译文。');
+    return;
+  }
+  state.translateRunning = true;
+  state.translateTotal = targets.length;
+  state.translateDone = 0;
+  $('translate-run').disabled = true;
+  $('translate-cancel').textContent = '中止';
+  const progress = $('translate-progress');
+  progress.hidden = false;
+  progress.max = targets.length;
+  progress.value = 0;
+  setStatus('translate-status', `正在生成译文 0/${targets.length}…`);
+  try {
+    const batch = await client.ai.batch.create({
+      source: 'proxy',
+      modelId,
+      prompt: IMAGE_TEXT_PROMPT,
+      concurrency: Math.min(2, targets.length),
+      items: targets.map(image => ({ token: image.token }))
+    });
+    state.translateBatch = { ...batch };
+    await client.ai.batch.start({ id: batch.id, revision: batch.revision, directoryToken: directory.token });
+    const finished = await waitForBatch(batch.id);
+    const results = await collectTranslations(finished, targets, modelId);
+    await applyTranslations(results);
+    const failures = translationFailures(finished);
+    if (results.length) {
+      const note = failures.length ? `，${failures.length} 张没有完成：` + failures[0].message : '，请逐张对比确认。';
+      setStatus('translate-status', `已生成 ${results.length} 张译文` + note, failures.length > 0);
+    } else {
+      setStatus('translate-status', failures.length ? '没有生成译文：' + failures[0].message : '模型没有返回结果，请重试。', true);
+    }
+  } catch (error) {
+    setStatus('translate-status', errorText(error), true);
+  } finally {
+    state.translateRunning = false;
+    state.translateBatch = null;
+    $('translate-run').disabled = false;
+    $('translate-cancel').textContent = '取消';
+    $('translate-progress').hidden = true;
+  }
 }
 
 async function doLoadTemplate() {
@@ -839,7 +1315,11 @@ function openSubmit() {
   const rows = [
     ['英文标题', form.product.title.en],
     ['希音类目', `${form.product.category.sheinCategoryId || '—'} / ${form.product.category.sheinProductTypeId || '—'}`],
-    ['图片', `${(form.product.images ?? []).filter(image => !image.excluded && image.token).length} 张`],
+    ['图片', (() => {
+      const images = (form.product.images ?? []).filter(image => !image.excluded && submitImage(image).token);
+      const translated = images.filter(image => usesTranslation(image)).length;
+      return `${images.length} 张` + (translated ? `（其中 ${translated} 张用译文）` : '');
+    })()],
     ['SKU', `${skus.length} 个`],
     ['供货价', prices.length ? `${money(Math.min(...prices), form.product.currency)} - ${money(Math.max(...prices), form.product.currency)}` : '—'],
     ['幂等键', skus[0]?.supplierSku || '—']
@@ -875,6 +1355,8 @@ async function confirmSubmit() {
 function fillSettings() {
   const settings = controller.getState().settings;
   $('model').value = settings.model || '';
+  if (state.imageModels.length) fillImageModelSelect($('image-model'), state.imageModels, settings.imageModel);
+  else $('image-model').value = settings.imageModel || '';
   $('default-coefficient').value = String(settings.coefficient ?? 1.35);
   $('site').value = settings.site || 'shein';
   $('base-url').value = settings.baseUrl || 'https://openapi.sheincorp.cn';
@@ -888,6 +1370,7 @@ async function doSaveSettings() {
     state.credentialRevision += 1;
     await controller.saveSettings({
       model: $('model').value.trim(),
+      imageModel: $('image-model').value,
       coefficient: $('default-coefficient').value,
       site: $('site').value.trim() || 'shein',
       baseUrl: $('base-url').value,
@@ -953,9 +1436,8 @@ async function loadModels() {
     select.append(new Option(defaultModel ? '默认模型（' + defaultModel + '）' : '默认模型', ''));
     for (const model of models) select.append(new Option(model.title && model.title !== model.id ? model.title + '（' + model.id + '）' : model.id, model.id));
     select.value = models.some(item => item.id === current) ? current : '';
-    setStatus('translation-status', '');
   } catch (reason) {
-    setStatus('translation-status', reason instanceof Error ? reason.message : '模型列表暂时不可用。', true);
+    setStatus('settings-status', reason instanceof Error ? reason.message : '模型列表暂时不可用。', true);
   }
 }
 
@@ -1013,6 +1495,7 @@ function bindEvents() {
     if (state.settingsOpen) {
       fillSettings();
       void loadModels();
+      void loadImageModels();
       void renderCredentialStatus();
     }
   });
@@ -1043,6 +1526,47 @@ function bindEvents() {
 
   $('translate').addEventListener('click', () => void doTranslate());
   $('prepare-images').addEventListener('click', () => void doPrepareImages());
+  $('translate-images').addEventListener('click', openTranslateDialog);
+  $('translate-cancel').addEventListener('click', closeTranslateDialog);
+  $('translate-run').addEventListener('click', () => void runImageTranslation());
+  $('translate-dialog').addEventListener('click', event => { if (event.target === $('translate-dialog')) closeTranslateDialog(); });
+  $('refresh-image-models').addEventListener('click', () => void loadImageModels());
+
+  $('tab-content').addEventListener('click', () => selectTab('content'));
+  $('tab-images').addEventListener('click', () => selectTab('images'));
+  $('tab-source').addEventListener('click', () => selectTab('source'));
+
+  $('view-original').addEventListener('click', () => setImageView('original'));
+  $('view-translated').addEventListener('click', () => setImageView('translated'));
+  $('view-compare').addEventListener('click', () => setImageView('compare'));
+  $('compare-range').addEventListener('input', event => {
+    state.compare = Number(event.target.value);
+    renderStage(state.form);
+  });
+  $('image-role').addEventListener('change', event => setImageRole(event.target.value));
+  $('image-excluded').addEventListener('change', event => setImageExcluded(event.target.checked));
+  $('image-revert').addEventListener('click', revertToOriginal);
+  $('image-zoom').addEventListener('click', () => openViewer(imageViewOf(currentImage()) === 'translated' ? 'translated' : 'original'));
+
+  $('viewer-close').addEventListener('click', closeViewer);
+  $('viewer').addEventListener('click', event => { if (event.target === $('viewer')) closeViewer(); });
+  $('viewer-original').addEventListener('click', () => { state.viewer.version = 'original'; renderViewer(); });
+  $('viewer-translated').addEventListener('click', () => { state.viewer.version = 'translated'; renderViewer(); });
+  $('viewer-zoom-in').addEventListener('click', () => zoomViewer(1.25));
+  $('viewer-zoom-out').addEventListener('click', () => zoomViewer(0.8));
+  $('viewer-zoom-fit').addEventListener('click', () => { state.viewer.zoom = 1; renderViewer(); });
+  $('viewer-prev').addEventListener('click', () => stepViewer(-1));
+  $('viewer-next').addEventListener('click', () => stepViewer(1));
+  document.addEventListener('keydown', event => {
+    if (state.viewer.open) {
+      if (event.key === 'Escape') { closeViewer(); return; }
+      if (event.key === 'ArrowLeft') { stepViewer(-1); return; }
+      if (event.key === 'ArrowRight') { stepViewer(1); return; }
+      if (event.key === '+' || event.key === '=') { zoomViewer(1.25); return; }
+      if (event.key === '-') { zoomViewer(0.8); return; }
+    }
+    if (event.key === 'Escape' && !$('translate-dialog').hidden) closeTranslateDialog();
+  });
   $('load-template').addEventListener('click', () => void doLoadTemplate());
   $('refresh-categories').addEventListener('click', () => void doRefreshCategories());
   $('suggest-category').addEventListener('click', () => void doSuggestCategory());

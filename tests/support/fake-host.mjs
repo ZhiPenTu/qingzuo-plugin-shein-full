@@ -16,12 +16,12 @@ export function businessError(code, msg) {
 
 // 最小可用的插件宿主替身：存储、凭据、浏览器和网络都记录调用，方便断言
 // “没点确认就绝不发品”这类安全约定。
-export function createFakeClient({ snapshot, resource = { data: PNG_1X1, mime: 'image/png', name: 'main.png' }, respond, translation } = {}) {
+export function createFakeClient({ snapshot, resource = { data: PNG_1X1, mime: 'image/png', name: 'main.png' }, respond, translation, imageModels, batch } = {}) {
   const storage = new Map();
   const files = new Map();
   const secrets = new Map();
   const tabs = [];
-  const calls = { ai: [], browser: [], network: [], storage: [], credentials: [], resources: [] };
+  const calls = { ai: [], browser: [], network: [], storage: [], credentials: [], resources: [], files: [], removed: [] };
   const translated = {
     title: 'Mock translated title',
     bullets: ['Mock benefit one', 'Mock benefit two'],
@@ -53,7 +53,7 @@ export function createFakeClient({ snapshot, resource = { data: PNG_1X1, mime: '
         if (!item) throw new Error('文件不存在。');
         return { data: item.data, mime: item.mime };
       },
-      async removeFile(token) { files.delete(token); return true; }
+      async removeFile(token) { calls.removed.push(token); files.delete(token); return true; }
     },
     credentials: {
       async set(name, value) { calls.credentials.push(['set', name]); secrets.set(name, value); },
@@ -62,7 +62,14 @@ export function createFakeClient({ snapshot, resource = { data: PNG_1X1, mime: '
     },
     files: {
       async url(token) { return 'plugin-file://' + token; },
-      async release() {}
+      async read(token) {
+        calls.files.push(['read', token]);
+        const item = files.get(token);
+        if (!item) throw new Error('文件不存在。');
+        return { data: item.data, mime: item.mime };
+      },
+      async release(token) { calls.files.push(['release', token]); return true; },
+      async pickDirectory() { calls.files.push(['pickDirectory']); return { token: 'dir-1', name: 'Translation' }; }
     },
     browser: {
       async open(url) {
@@ -105,6 +112,10 @@ export function createFakeClient({ snapshot, resource = { data: PNG_1X1, mime: '
       }
     },
     ai: {
+      async models(options = {}) {
+        calls.ai.push(['models', options]);
+        return imageModels ?? [{ id: 'mock-image', source: 'proxy', provider: 'google', title: 'Mock Image', sizes: ['1024x1024'] }];
+      },
       async textModels() {
         calls.ai.push(['textModels']);
         return { models: [{ id: 'mock-translator', title: 'Mock Translator' }], defaultModel: 'mock-translator' };
@@ -112,6 +123,29 @@ export function createFakeClient({ snapshot, resource = { data: PNG_1X1, mime: '
       async complete(options) {
         calls.ai.push(['complete', options]);
         return { content: JSON.stringify(translated), model: options.model || 'mock-translator' };
+      },
+      batch: {
+        async create(options) {
+          calls.ai.push(['batch.create', options]);
+          const base = batch ? await batch.create(options) : null;
+          return base ?? {
+            schemaVersion: 1, id: 'batch-1', owner: 'test', revision: 1, created: 1, state: 'draft',
+            source: options.source, modelId: options.modelId, parameters: {}, concurrency: options.concurrency ?? 1,
+            items: options.items.map((item, index) => ({ id: 'item-' + (index + 1), name: 'item-' + (index + 1), mime: 'image/png', prompt: '', state: 'pending', error: null, output: null }))
+          };
+        },
+        async start(options) { calls.ai.push(['batch.start', options]); return { id: options.id, state: 'running' }; },
+        async get(options) {
+          calls.ai.push(['batch.get', options]);
+          if (batch?.get) return batch.get(options);
+          return { schemaVersion: 1, id: options.id, state: 'finished', revision: 1, items: [] };
+        },
+        async cancel(options) { calls.ai.push(['batch.cancel', options]); return { id: options.id, state: 'canceled' }; },
+        async preview(options) {
+          calls.ai.push(['batch.preview', options]);
+          if (batch?.preview) return batch.preview(options);
+          return createFile({ data: PNG_1X1, filename: 'preview.png', mime: 'image/png' });
+        }
       }
     }
   };

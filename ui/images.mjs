@@ -69,6 +69,31 @@ export function imageNeedsConversion(image) {
   return Boolean(image && (image.mime !== 'image/jpeg' && image.mime !== 'image/png'));
 }
 
+// 一张图可以同时保留原图与译文。译文存在 image.translated 里，
+// useTranslated 只表示「提交时用哪一张」，切换它不会丢掉另一份文件。
+export function translatedVersion(image) {
+  const translated = image?.translated;
+  if (!translated?.token) return null;
+  return {
+    token: translated.token,
+    mime: translated.mime || image.mime || '',
+    size: Number(translated.size) || Number(image.size) || 0,
+    width: Number(translated.width) || Number(image.width) || 0,
+    height: Number(translated.height) || Number(image.height) || 0
+  };
+}
+
+export function usesTranslation(image) {
+  return Boolean(translatedVersion(image)) && image?.useTranslated !== false;
+}
+
+// 校验、上传和发品都只关心「最终要交出去的那一张」，
+// 统一从这里取，避免各处各写一套判断。
+export function submitImage(image) {
+  const version = usesTranslation(image) ? translatedVersion(image) : null;
+  return version ? { ...image, ...version } : image;
+}
+
 // 1688 的主图经常是 WebP/AVIF。希音只收 JPG/PNG，这里在插件页面内
 // 用 canvas 转成白底 JPEG，不改变图内文字与商品外观。
 export async function convertToJpeg(base64, mime, quality = 0.92) {
@@ -85,4 +110,22 @@ export async function convertToJpeg(base64, mime, quality = 0.92) {
   const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', quality));
   if (!blob) throw new Error('图片转换失败。');
   return { base64: bytesToBase64(new Uint8Array(await blob.arrayBuffer())), mime: 'image/jpeg', width: canvas.width, height: canvas.height };
+}
+
+// 图像模型经常直接回 WebP，或者回一张超过 3 MB 的 PNG。希音只收
+// JPG/PNG 且不超过 3 MB，这里统一收口：先按原格式检查，不符合再转
+// 白底 JPEG 并逐级降质量，直到能提交为止。
+export async function fitForShein(data, mime) {
+  const length = base64Bytes(data).length;
+  if ((mime === 'image/jpeg' || mime === 'image/png') && length <= MAX_IMAGE_BYTES) {
+    return { data, mime, size: length, width: 0, height: 0, converted: false };
+  }
+  for (const quality of [0.9, 0.82, 0.74, 0.66]) {
+    const converted = await convertToJpeg(data, mime || 'image/png', quality);
+    const size = base64Bytes(converted.base64).length;
+    if (size <= MAX_IMAGE_BYTES) {
+      return { data: converted.base64, mime: 'image/jpeg', size, width: converted.width, height: converted.height, converted: true };
+    }
+  }
+  throw new Error('译文超过 3 MB，请换一张更小的图片或重新生成。');
 }

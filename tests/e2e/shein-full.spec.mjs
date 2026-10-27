@@ -156,9 +156,12 @@ test('1688 采集到希音提交：确认前零发品调用，签名与幂等键
     await expect(plugin.locator('#action-status')).toHaveText('已加载必填属性，请补全英文值。', { timeout: 90000 });
     await expect(plugin.locator('#attributes .attribute-row')).toHaveCount(2);
 
+    // 图片工作区在独立分区里，窄窗口下各分区不同时展开。
+    await plugin.locator('#tab-images').click();
     await plugin.locator('#prepare-images').click();
     await expect(plugin.locator('#action-status')).toHaveText(/已转存 2 张图片/, { timeout: 120000 });
     await expect(plugin.locator('#image-hint')).toHaveText('2 张可提交');
+    await plugin.locator('#tab-content').click();
 
     const rows = plugin.locator('#sku-body tr');
     await expect(rows).toHaveCount(2);

@@ -36,7 +36,7 @@ test('只申请 1.4 新增能力所需的最小权限', () => {
 });
 
 test('打包需要的界面文件都在仓库里', async () => {
-  for (const file of ['ui/index.html', 'ui/app.mjs', 'ui/style.css', 'ui/sdk.mjs', 'ui/shein-auth.mjs', 'LICENSE']) {
+  for (const file of ['ui/index.html', 'ui/app.mjs', 'ui/style.css', 'ui/sdk.mjs', 'ui/shein-auth.mjs', 'ui/images.mjs', 'ui/image-translate.mjs', 'LICENSE']) {
     await access(file);
   }
 });

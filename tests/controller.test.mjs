@@ -340,3 +340,58 @@ test('未连接希音时不会请求类目树', async () => {
   await assert.rejects(() => controller.loadCategories(), /连接希音/);
   assert.equal(fake.calls.network.length, 0);
 });
+
+test('提交时按当前版本上传图片，原图与译文不会混用', async () => {
+  const { controller, calls } = await readyController();
+  const draft = await controller.collect(SOURCE);
+  const patch = patchFor(draft);
+  patch.product.images = [{
+    id: 'img-1', role: 'main', name: 'main.jpg', mime: 'image/jpeg', size: 102400, width: 1000, height: 1000,
+    excluded: false, uploadedUrl: '', token: 'file-img',
+    translated: { token: 'file-en', mime: 'image/jpeg', size: 120000, width: 1000, height: 1000 },
+    useTranslated: true
+  }];
+  await controller.saveDraft(draft.id, patch);
+  const submitted = await controller.submit(draft.id, { confirm: true });
+  assert.equal(submitted.status, 'submitted');
+  const uploads = calls.network
+    .filter(options => new URL(options.url).pathname === '/open-api/goods/upload-pic')
+    .map(options => options.multipart.files[0].token);
+  assert.deepEqual(uploads, ['file-en']);
+  const image = controller.find(draft.id).product.images[0];
+  assert.equal(image.token, 'file-img');
+  assert.equal(image.translated.token, 'file-en');
+  assert.equal(image.uploadedToken, 'file-en');
+  assert.ok(image.uploadedUrl);
+});
+
+test('删除草稿会同时释放原图与译文文件', async () => {
+  const { controller, client, calls } = await readyController();
+  const draft = await controller.collect(SOURCE);
+  const original = await client.storage.saveFile({ data: 'AA==', filename: 'a.png', mime: 'image/png' });
+  const translated = await client.storage.saveFile({ data: 'AA==', filename: 'a-en.png', mime: 'image/png' });
+  const patch = patchFor(draft);
+  patch.product.images = [{
+    id: 'img-1', role: 'main', name: 'a.png', mime: 'image/png', size: 1024, width: 1000, height: 1000,
+    excluded: false, token: original.token,
+    translated: { token: translated.token, mime: 'image/png', size: 1024 },
+    useTranslated: true
+  }];
+  await controller.saveDraft(draft.id, patch);
+  await controller.remove(draft.id);
+  assert.deepEqual(calls.removed.slice().sort(), [original.token, translated.token].sort());
+  assert.equal(controller.getState().drafts.length, 0);
+});
+
+test('图片模型列表来自底座的代理模型目录', async () => {
+  const fake = createFakeClient({
+    snapshot,
+    respond: routeOverrides(),
+    imageModels: [{ id: 'gpt-image', source: 'proxy', provider: 'openai', title: 'Image', sizes: ['1024x1024'] }]
+  });
+  const controller = createController({ client: fake.client, now: () => 1760000000000 });
+  await controller.load();
+  const models = await controller.imageCatalog();
+  assert.deepEqual(models.map(model => model.id), ['gpt-image']);
+  assert.deepEqual(fake.calls.ai.find(call => call[0] === 'models')[1], { source: 'proxy' });
+});

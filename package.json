@@ -1,6 +1,6 @@
 {
   "name": "@commerce/plugin-shein-full",
-  "version": "0.3.7",
+  "version": "0.3.8",
   "private": true,
   "type": "module",
   "commerce": {
@@ -11,7 +11,7 @@
     "category": "电商工具",
     "api": "^1.4.0",
     "ui": "ui/index.html",
-    "releaseNotes": "优化希音授权成功页，请重新连接希音店铺。",
+    "releaseNotes": "新增商品图片大图查看器、原图/译文滑杆对比与图内文字翻译能力，优化图片工作区与窄屏分栏排版。",
     "permissions": {
       "files": true,
       "storage": true,

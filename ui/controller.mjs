@@ -12,7 +12,7 @@ import { authorizationUrl, authorizeOriginOf, callbackUrlOf, createAuthorization
 import { applyAttributeTemplate, parseAttributeTemplate, parseCategoryTree } from './category.mjs';
 import { buildPublishPayload } from './shein-payload.mjs';
 import { translateProduct } from './translate.mjs';
-import { convertToJpeg, imageNeedsConversion, imageTypeFor, readImageSize, validateImage } from './images.mjs';
+import { convertToJpeg, imageNeedsConversion, imageTypeFor, readImageSize, submitImage, validateImage } from './images.mjs';
 
 export const DRAFTS_KEY = 'drafts';
 export const SETTINGS_KEY = 'settings';
@@ -21,6 +21,7 @@ const AUTH_POLL_MS = 300;
 
 export const DEFAULT_SETTINGS = Object.freeze({
   model: '',
+  imageModel: '',
   coefficient: 1.35,
   site: 'shein',
   baseUrl: SHEIN_BASE_URL,
@@ -202,6 +203,12 @@ export function createController({ client, now = () => Date.now(), sleep = ms =>
     return client.ai.textModels();
   }
 
+  // 图内文字翻译要用能编辑图片的模型，和文案模型不是同一份列表。
+  async function imageCatalog() {
+    const result = await client.ai.models({ source: 'proxy' });
+    return Array.isArray(result) ? result : (result?.models ?? []);
+  }
+
   async function collect(link) {
     const url = sourceUrlOf(link);
     const tab = await client.browser.open(url);
@@ -373,14 +380,18 @@ export function createController({ client, now = () => Date.now(), sleep = ms =>
     if (quota.remaining !== null && quota.remaining <= 0) throw new Error('希音发品额度不足。');
 
     const images = [];
-    for (const image of draft.product.images ?? []) {
+    for (const source of draft.product.images ?? []) {
+      // 原图与译文可能同时存在，上传与发品只认当前选中的那一份。
+      const image = submitImage(source);
       if (image.excluded || !image.token) continue;
-      let uploadedUrl = image.uploadedUrl;
+      const reusable = image.uploadedUrl && image.uploadedToken === image.token;
+      let uploadedUrl = reusable ? image.uploadedUrl : '';
       if (!uploadedUrl) {
         uploadedUrl = parseUploadedUrl(await gateway.uploadPic({ token: image.token, imageType: imageTypeFor(image.role) }));
         if (!uploadedUrl) throw new Error('图片上传没有返回希音地址：' + (image.name || image.id));
       }
-      images.push({ ...image, uploadedUrl });
+      // 存回草稿时保留原图与译文两份，只记下这次上传的是哪一个版本。
+      images.push({ ...source, uploadedUrl, uploadedToken: image.token });
     }
     if (!images.some(image => image.role === 'main')) throw new Error('至少需要一张已上传的主图。');
     let staged = await persistDraft({
@@ -412,9 +423,12 @@ export function createController({ client, now = () => Date.now(), sleep = ms =>
 
   async function remove(draftId) {
     const draft = find(draftId);
+    const tokens = new Set();
     for (const image of draft.product?.images ?? []) {
-      if (image.token) await client.storage.removeFile(image.token).catch(() => {});
+      if (image.token) tokens.add(image.token);
+      if (image.translated?.token) tokens.add(image.translated.token);
     }
+    for (const token of tokens) await client.storage.removeFile(token).catch(() => {});
     state.drafts = state.drafts.filter(item => item.id !== draftId);
     await client.storage.set(DRAFTS_KEY, state.drafts);
     notify();
@@ -427,7 +441,7 @@ export function createController({ client, now = () => Date.now(), sleep = ms =>
   }
 
   return Object.freeze({
-    load, saveSettings, setSecret, clearSecret, startAuthorization, awaitAuthorization, resetAuthorizationTab, authorize, credentialStatus, aiCatalog,
+    load, saveSettings, setSecret, clearSecret, startAuthorization, awaitAuthorization, resetAuthorizationTab, authorize, credentialStatus, aiCatalog, imageCatalog,
     collect, translate, prepareImages, loadCategories, loadTemplate, suggestCategory, ensureTab,
     saveDraft, submit, poll, remove, resume,
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },

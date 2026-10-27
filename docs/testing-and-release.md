@@ -6,7 +6,8 @@
 
 | 层 | 命令 | 覆盖什么 | 依赖 |
 | --- | --- | --- | --- |
-| 单元 | `npm test` | 清单校验、采集解析、定价、签名、载荷、状态机、翻译解析、图片校验 | 无 |
+| 单元 | `npm test` | 清单校验、采集解析、定价、签名、载荷、状态机、翻译解析、图片校验、译文版本切换 | 无 |
+| 预览 | `node scripts/preview.mjs` | 多窗口尺寸下的布局、原貌大图、查看器、对比滑杆、翻译弹窗、窄屏无横向溢出 | Playwright Chromium |
 | 端到端 | `QINGZUO_DESKTOP_ROOT=… npm run test:e2e` | 真实 Electron 底座装包 → 采集 → 翻译 → 配图 → 审核 → 确认 → 提交 → 查审核状态 | 已构建的 `qingzuo-desktop` |
 | 宿主冒烟 | `QINGZUO_HOST_EXECUTABLE=… npm run test:host` | 打进安装包的宿主能加载插件、界面保持静默、密钥框是密码框 | 已安装的轻作桌面 |
 | 平台契约 | 在 `qingzuo-desktop` 里跑 `npm run test:platform` | 浏览器白名单、`network.sign`、`storage` 隔离与配额 | 底座仓库 |
