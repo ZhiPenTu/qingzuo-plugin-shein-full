@@ -26,7 +26,7 @@
     </div>
     <div class="settings-grid">
       <div class="field">
-        <label for="model">翻译模型</label>
+        <label for="model">文案模型</label>
         <div class="row">
           <select id="model">
             <option value="">默认模型</option>
@@ -34,6 +34,16 @@
           <button id="refresh-models" class="secondary small" type="button">刷新</button>
         </div>
         <p class="hint">模型来自轻作 AI 设置，无需单独配置密钥。</p>
+      </div>
+      <div class="field">
+        <label for="image-model">图片模型</label>
+        <div class="row">
+          <select id="image-model">
+            <option value="">未选择</option>
+          </select>
+          <button id="refresh-image-models" class="secondary small" type="button">刷新</button>
+        </div>
+        <p id="image-model-status" class="hint" role="status"></p>
       </div>
       <div class="field">
         <label for="default-coefficient">新草稿加价系数</label>
@@ -94,21 +104,17 @@
     <p class="hint">1688 需要在内嵌浏览器登录一次。采集只读取当前页面的结构化内容，不会读取 Cookie 或隐藏字段。</p>
   </section>
 
-  <section class="panel collect">
-    <div class="panel-head">
-      <h2>采集商品</h2>
-      <span class="muted">右侧浏览器会并排打开</span>
-    </div>
-    <div class="row">
-      <input id="source-url" type="url" autocomplete="off" placeholder="粘贴 1688 商品详情链接，例如 https://detail.1688.com/offer/826500000001.html">
-      <button id="collect" type="button">采集</button>
-    </div>
-    <p id="collect-status" class="status" role="status"></p>
-  </section>
-
   <div class="workspace">
     <aside class="panel drafts">
-      <div class="panel-head">
+      <div class="collect">
+        <label class="collect-label" for="source-url">采集 1688 商品</label>
+        <div class="row">
+          <input id="source-url" type="url" autocomplete="off" placeholder="粘贴 1688 商品详情链接">
+          <button id="collect" type="button">采集</button>
+        </div>
+        <p id="collect-status" class="status" role="status"></p>
+      </div>
+      <div class="panel-head drafts-head">
         <h2>草稿</h2>
         <span id="draft-count" class="muted">0</span>
       </div>
@@ -131,9 +137,120 @@
 
       <div id="submission" class="submission" hidden></div>
 
-      <div class="compare">
-        <article class="source">
-          <h3>1688 原貌</h3>
+      <nav class="tabs" role="tablist" aria-label="草稿分区">
+        <button id="tab-content" class="tab is-active" type="button" role="tab" aria-selected="true" aria-controls="pane-content">内容</button>
+        <button id="tab-images" class="tab" type="button" role="tab" aria-selected="false" aria-controls="pane-images">图片</button>
+        <button id="tab-source" class="tab" type="button" role="tab" aria-selected="false" aria-controls="pane-source">1688 原貌</button>
+      </nav>
+
+      <div id="pane-content" class="pane" role="tabpanel" aria-labelledby="tab-content">
+        <section class="section-card">
+          <h4 class="section-title">标题与卖点</h4>
+          <div class="field-grid-2">
+            <div class="field span-2">
+              <label for="title-en">英文标题</label>
+              <input id="title-en" type="text" maxlength="200" autocomplete="off">
+              <p id="title-zh" class="hint"></p>
+            </div>
+            <div class="field">
+              <label for="bullets">卖点（每行一条）</label>
+              <textarea id="bullets" rows="4"></textarea>
+            </div>
+            <div class="field">
+              <label for="description">英文描述</label>
+              <textarea id="description" rows="4"></textarea>
+            </div>
+          </div>
+        </section>
+
+        <section class="section-card">
+          <h4 class="section-title">希音类目与属性</h4>
+          <div class="field">
+            <label>希音类目</label>
+            <div id="category-picker" class="category-picker" role="group" aria-label="希音类目"></div>
+            <div class="category-actions">
+              <button id="load-template" class="secondary" type="button">读取属性模板</button>
+              <button id="refresh-categories" class="secondary small" type="button">刷新类目</button>
+              <button id="suggest-category" class="secondary small" type="button">推荐类目</button>
+              <label class="check"><input id="category-confirmed" type="checkbox"> 类目已确认</label>
+            </div>
+            <div id="category-suggestions" class="suggestions"></div>
+            <span id="category-hint" class="hint"></span>
+          </div>
+
+          <div id="attributes" class="attributes"></div>
+        </section>
+
+        <section class="section-card">
+          <h4 class="section-title">变体 SKU 与供货价</h4>
+          <div class="field">
+            <div class="row compact">
+              <span class="hint">加价系数</span>
+              <input id="coefficient" class="narrow" type="number" min="1.05" max="3" step="0.01">
+              <span id="coefficient-hint" class="hint"></span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>1688 颜色</th><th>英文颜色</th><th>希音颜色值</th><th>1688 单价</th><th>供货价</th><th>供货 SKU</th><th>库存</th></tr>
+                </thead>
+                <tbody id="sku-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <div id="issues" class="issues"></div>
+      </div>
+
+      <div id="pane-images" class="pane" role="tabpanel" aria-labelledby="tab-images" hidden>
+        <section class="section-card image-workspace">
+          <div class="image-toolbar">
+            <div id="image-view-switch" class="segmented" role="group" aria-label="图片版本">
+              <button id="view-original" class="segment is-active" type="button" aria-pressed="true">原图</button>
+              <button id="view-translated" class="segment" type="button" aria-pressed="false">译文</button>
+              <button id="view-compare" class="segment" type="button" aria-pressed="false">对比</button>
+            </div>
+            <div class="image-toolbar-actions">
+              <button id="translate-images" class="secondary" type="button">翻译图内文字</button>
+              <button id="prepare-images" class="secondary" type="button">从 1688 转存图片</button>
+            </div>
+          </div>
+
+          <div class="image-body">
+            <div class="image-main">
+              <div id="image-stage" class="image-stage"></div>
+              <div id="compare-control" class="compare-control" hidden>
+                <span class="hint">原图</span>
+                <input id="compare-range" type="range" min="0" max="100" step="1" value="50" aria-label="对比位置">
+                <span class="hint">译文</span>
+              </div>
+
+              <div class="image-controls-bar">
+                <span id="image-counter" class="muted"></span>
+                <span id="image-version-note" class="hint"></span>
+                <div class="image-controls-right">
+                  <select id="image-role" aria-label="图片用途">
+                    <option value="main">主图</option>
+                    <option value="detail">详情图</option>
+                  </select>
+                  <label class="check"><input id="image-excluded" type="checkbox"> 排除</label>
+                  <button id="image-revert" class="secondary small" type="button" hidden>改用原图</button>
+                  <button id="image-zoom" class="secondary small" type="button">查看大图</button>
+                </div>
+              </div>
+            </div>
+
+            <ul id="image-list" class="filmstrip" aria-label="商品图片"></ul>
+          </div>
+
+          <p id="image-hint" class="hint"></p>
+        </section>
+      </div>
+
+      <div id="pane-source" class="pane" role="tabpanel" aria-labelledby="tab-source" hidden>
+        <section class="section-card source-card">
+          <h4 class="section-title">1688 原貌</h4>
           <p id="source-title" class="source-title"></p>
           <dl id="source-facts" class="facts"></dl>
           <div id="source-images" class="thumb-grid"></div>
@@ -141,85 +258,12 @@
             <summary>原始属性</summary>
             <dl id="source-attributes" class="facts"></dl>
           </details>
-        </article>
-
-        <article class="final">
-          <h3>希音终稿</h3>
-
-          <section class="section-card">
-            <h4 class="section-title">标题与卖点</h4>
-            <div class="field-grid-2">
-              <div class="field span-2">
-                <label for="title-en">英文标题</label>
-                <input id="title-en" type="text" maxlength="200" autocomplete="off">
-                <p id="title-zh" class="hint"></p>
-              </div>
-              <div class="field">
-                <label for="bullets">卖点（每行一条）</label>
-                <textarea id="bullets" rows="4"></textarea>
-              </div>
-              <div class="field">
-                <label for="description">英文描述</label>
-                <textarea id="description" rows="4"></textarea>
-              </div>
-            </div>
-          </section>
-
-          <section class="section-card">
-            <h4 class="section-title">希音类目与属性</h4>
-            <div class="field">
-              <label>希音类目</label>
-              <div id="category-picker" class="category-picker" role="group" aria-label="希音类目"></div>
-              <div class="category-actions">
-                <button id="load-template" class="secondary" type="button">读取属性模板</button>
-                <button id="refresh-categories" class="secondary small" type="button">刷新类目</button>
-                <button id="suggest-category" class="secondary small" type="button">推荐类目</button>
-                <label class="check"><input id="category-confirmed" type="checkbox"> 类目已确认</label>
-              </div>
-              <div id="category-suggestions" class="suggestions"></div>
-              <span id="category-hint" class="hint"></span>
-            </div>
-
-            <div id="attributes" class="attributes"></div>
-          </section>
-
-          <section class="section-card">
-            <h4 class="section-title">商品图片</h4>
-            <div class="field">
-              <div id="image-list" class="image-list"></div>
-              <div class="row">
-                <button id="prepare-images" class="secondary" type="button">从 1688 转存图片</button>
-                <span id="image-hint" class="hint"></span>
-              </div>
-            </div>
-          </section>
-
-          <section class="section-card">
-            <h4 class="section-title">变体 SKU 与供货价</h4>
-            <div class="field">
-              <div class="row compact">
-                <span class="hint">加价系数</span>
-                <input id="coefficient" class="narrow" type="number" min="1.05" max="3" step="0.01">
-                <span id="coefficient-hint" class="hint"></span>
-              </div>
-              <div class="table-wrap">
-                <table>
-                  <thead>
-                    <tr><th>1688 颜色</th><th>英文颜色</th><th>希音颜色值</th><th>1688 单价</th><th>供货价</th><th>供货 SKU</th><th>库存</th></tr>
-                  </thead>
-                  <tbody id="sku-body"></tbody>
-                </table>
-              </div>
-            </div>
-          </section>
-        </article>
+        </section>
       </div>
-
-      <div id="issues" class="issues"></div>
 
       <div class="review-footer">
         <div class="footer-actions">
-          <button id="translate" class="secondary" type="button">翻译图文</button>
+          <button id="translate" class="secondary" type="button">翻译文案</button>
           <button id="save" class="secondary" type="button">保存草稿</button>
           <button id="poll" class="secondary" type="button" hidden>查询审核状态</button>
           <button id="resume" class="secondary" type="button" hidden>重新编辑</button>
@@ -233,6 +277,61 @@
       <h2>还没有选中的草稿</h2>
       <p>先粘贴 1688 商品链接完成采集，再在这里对照原貌修改英文终稿。</p>
     </section>
+  </div>
+</div>
+
+<div id="viewer" class="dialog viewer-dialog" hidden>
+  <div class="viewer-card" role="dialog" aria-modal="true" aria-label="查看商品图片">
+    <div class="viewer-head">
+      <div class="viewer-heading">
+        <strong id="viewer-title"></strong>
+        <span id="viewer-meta" class="muted"></span>
+      </div>
+      <div class="viewer-tools">
+        <div class="segmented small" role="group" aria-label="图片版本">
+          <button id="viewer-original" class="segment is-active" type="button" aria-pressed="true">原图</button>
+          <button id="viewer-translated" class="segment" type="button" aria-pressed="false">译文</button>
+        </div>
+        <button id="viewer-zoom-out" class="secondary small" type="button" aria-label="缩小">缩小</button>
+        <button id="viewer-zoom-fit" class="secondary small" type="button">适应</button>
+        <button id="viewer-zoom-in" class="secondary small" type="button" aria-label="放大">放大</button>
+        <button id="viewer-close" class="secondary small" type="button">关闭</button>
+      </div>
+    </div>
+    <div id="viewer-frame" class="viewer-frame">
+      <img id="viewer-image" alt="">
+    </div>
+    <div class="viewer-foot">
+      <button id="viewer-prev" class="secondary small" type="button">上一张</button>
+      <span id="viewer-counter" class="muted"></span>
+      <button id="viewer-next" class="secondary small" type="button">下一张</button>
+    </div>
+  </div>
+</div>
+
+<div id="translate-dialog" class="dialog" hidden>
+  <div class="dialog-card" role="dialog" aria-modal="true" aria-labelledby="translate-title">
+    <h2 id="translate-title">翻译图内文字</h2>
+    <p class="hint">把图片里的中文改成英文，商品本体、构图和排版保持不变。</p>
+    <div class="field">
+      <label for="translate-model">图片模型</label>
+      <select id="translate-model"></select>
+      <p class="hint">模型来自轻作 AI 设置；没有可用模型时先在设置里配置。</p>
+    </div>
+    <div class="field">
+      <label>处理范围</label>
+      <div class="radio-row">
+        <label class="check"><input id="translate-scope-current" type="radio" name="translate-scope" value="current" checked> 当前这张</label>
+        <label class="check"><input id="translate-scope-all" type="radio" name="translate-scope" value="all"> 全部未排除图片</label>
+      </div>
+    </div>
+    <p class="warning">每次生成都会调用图像模型并产生费用，译文会同时保存一份到你选择的文件夹。提交前请逐张对比确认，确认前不会发品。</p>
+    <p id="translate-status" class="status" role="status"></p>
+    <progress id="translate-progress" max="1" value="0" hidden></progress>
+    <div class="dialog-actions">
+      <button id="translate-cancel" class="secondary" type="button">取消</button>
+      <button id="translate-run" class="primary" type="button">开始翻译</button>
+    </div>
   </div>
 </div>
 

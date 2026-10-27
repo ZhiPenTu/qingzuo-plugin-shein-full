@@ -1,4 +1,5 @@
 import { DEFAULT_COEFFICIENT, priceIssues, priceSpreadWarning, supplyPrice } from './pricing.mjs';
+import { submitImage } from './images.mjs';
 
 export const STATUS_LABEL = Object.freeze({
   collected: '已采集',
@@ -157,13 +158,15 @@ export function validateDraft(draft) {
   if (!images.filter(image => image.role === 'main' && !image.excluded).length) push('images', '至少需要一张主图');
   for (const image of images) {
     if (image.excluded) continue;
-    if (!image.token) push('images', '图片「' + (image.name || '未命名') + '」尚未转存');
-    if (image.size && image.size > 3 * 1024 * 1024) push('images', '图片「' + (image.name || '未命名') + '」超过希音 3 MB 上限');
-    if (image.mime && !['image/jpeg', 'image/png'].includes(image.mime)) push('images', '图片「' + (image.name || '未命名') + '」需为 JPG 或 PNG');
-    if (image.role === 'main' && image.width && image.height) {
-      const square = Math.abs(image.width - image.height) <= Math.min(image.width, image.height) * 0.05;
-      if (square && Math.min(image.width, image.height) < 900) push('images', '主图「' + (image.name || '未命名') + '」低于 900 px，希音可能拒收', 'warning');
-      if (!square && Math.min(image.width, image.height) < 1340) push('images', '主图「' + (image.name || '未命名') + '」低于希音建议尺寸 1340×1785', 'warning');
+    // 译文可能改过尺寸或格式，校验以最终要提交的那一张为准。
+    const version = submitImage(image);
+    if (!version.token) push('images', '图片「' + (image.name || '未命名') + '」尚未转存');
+    if (version.size && version.size > 3 * 1024 * 1024) push('images', '图片「' + (image.name || '未命名') + '」超过希音 3 MB 上限');
+    if (version.mime && !['image/jpeg', 'image/png'].includes(version.mime)) push('images', '图片「' + (image.name || '未命名') + '」需为 JPG 或 PNG');
+    if (image.role === 'main' && version.width && version.height) {
+      const square = Math.abs(version.width - version.height) <= Math.min(version.width, version.height) * 0.05;
+      if (square && Math.min(version.width, version.height) < 900) push('images', '主图「' + (image.name || '未命名') + '」低于 900 px，希音可能拒收', 'warning');
+      if (!square && Math.min(version.width, version.height) < 1340) push('images', '主图「' + (image.name || '未命名') + '」低于希音建议尺寸 1340×1785', 'warning');
     }
   }
 

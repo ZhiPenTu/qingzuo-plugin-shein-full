@@ -122,3 +122,35 @@ test('草稿列表按更新时间置顶并限制上限', () => {
   const many = Array.from({ length: 120 }, (_, index) => ({ id: 'd' + index }));
   assert.equal(upsertDraft(many, { id: 'new' }).length, 100);
 });
+
+test('译文不合规时按提交版本拦截，原图合规也不放行', () => {
+  const draft = reviewReadyDraft();
+  const withTranslation = {
+    ...draft,
+    product: {
+      ...draft.product,
+      images: [{
+        id: 'img-1', role: 'main', token: 'file-1', name: 'main.png', size: 1024, mime: 'image/png', width: 1000, height: 1000, excluded: false,
+        translated: { token: 'file-en', mime: 'image/webp', size: 1024, width: 1000, height: 1000 },
+        useTranslated: true
+      }]
+    }
+  };
+  assert.equal(blockingIssues(withTranslation).some(issue => issue.message.includes('JPG')), true);
+
+  const oversized = {
+    ...withTranslation,
+    product: {
+      ...withTranslation.product,
+      images: [{ ...withTranslation.product.images[0], translated: { token: 'file-en', mime: 'image/jpeg', size: 3 * 1024 * 1024 + 1, width: 1000, height: 1000 } }]
+    }
+  };
+  assert.equal(blockingIssues(oversized).some(issue => issue.message.includes('3 MB')), true);
+
+  // 切回原图后同一条草稿恢复可提交，译文不再参与校验。
+  const backToOriginal = {
+    ...withTranslation,
+    product: { ...withTranslation.product, images: [{ ...withTranslation.product.images[0], useTranslated: false }] }
+  };
+  assert.deepEqual(blockingIssues(backToOriginal), []);
+});
