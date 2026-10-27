@@ -90,7 +90,14 @@ input.narrow, input#coefficient { width: 90px !important; max-width: 90px !impor
 #coefficient-hint { flex: 0 0 auto; white-space: nowrap; }
 
 .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
-.field > label { color: #3b4453; font-size: 12px; font-weight: 600; }
+.field > label, .field-head > label { color: #3b4453; font-size: 12px; font-weight: 600; }
+.field-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+button.link-btn { border: 0; border-radius: 4px; padding: 2px 4px; color: var(--brand); background: transparent; font-size: 12px; font-weight: 500; }
+button.link-btn:hover:enabled { background: var(--brand-soft); }
+.source-title-row { display: flex; align-items: center; gap: 8px; }
+.source-title-row > label { flex: 0 0 auto; color: var(--muted); font-size: 12px; white-space: nowrap; }
+.source-title-row > input { flex: 1 1 auto; min-width: 0; }
+.source-title-row > button { flex: 0 0 auto; }
 .field-grid-2 { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 16px; }
 .field-grid-2 > .span-2 { grid-column: 1 / -1; }
 
@@ -286,6 +293,7 @@ td.supply { color: var(--brand); font-weight: 600; }
 .dialog > * { margin: auto; }
 .dialog-card { width: min(480px, 100%); max-height: 100%; overflow: auto; border-radius: 14px; padding: 20px 22px; background: #fff; box-shadow: 0 24px 60px rgba(24,32,28,.24); }
 .dialog-card h2 { margin-bottom: 10px; font-size: 17px; }
+#translate-prompt { min-height: 92px; max-height: 200px; font-size: 12.5px; line-height: 1.55; }
 .dialog-card .facts { margin: 12px 0 8px; }
 .dialog-card .check { display: inline-flex; white-space: normal; }
 .warning { margin-top: 10px; border-radius: 8px; padding: 8px 10px; color: var(--warn); background: var(--warn-soft); font-size: 12px; line-height: 1.6; }

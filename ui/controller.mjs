@@ -11,7 +11,7 @@ import {
 import { authorizationUrl, authorizeOriginOf, callbackUrlOf, createAuthorizationState, decryptSecretKey, readAuthorizationCallback } from './shein-auth.mjs';
 import { applyAttributeTemplate, parseAttributeTemplate, parseCategoryTree } from './category.mjs';
 import { buildPublishPayload } from './shein-payload.mjs';
-import { translateProduct } from './translate.mjs';
+import { translateProduct, translateTitle } from './translate.mjs';
 import { convertToJpeg, imageNeedsConversion, imageTypeFor, readImageSize, submitImage, validateImage } from './images.mjs';
 
 export const DRAFTS_KEY = 'drafts';
@@ -22,6 +22,7 @@ const AUTH_POLL_MS = 300;
 export const DEFAULT_SETTINGS = Object.freeze({
   model: '',
   imageModel: '',
+  imagePrompt: '',
   coefficient: 1.35,
   site: 'shein',
   baseUrl: SHEIN_BASE_URL,
@@ -41,6 +42,7 @@ export function sourceUrlOf(value) {
 
 function mergeSettings(value) {
   const settings = { ...DEFAULT_SETTINGS, ...(value && typeof value === 'object' ? value : {}) };
+  settings.imagePrompt = typeof settings.imagePrompt === 'string' ? settings.imagePrompt.trim() : '';
   settings.coefficient = coefficientOf({ product: { coefficient: settings.coefficient } });
   if (settings.baseUrl === SHEIN_LEGACY_BASE_URL || !/^https:\/\//.test(settings.baseUrl)) settings.baseUrl = SHEIN_BASE_URL;
   return settings;
@@ -232,7 +234,7 @@ export function createController({ client, now = () => Date.now(), sleep = ms =>
       model: state.settings.model,
       glossary: glossary && typeof glossary === 'object' ? glossary : {},
       input: {
-        title: draft.source?.title ?? '',
+        title: draft.product?.title?.zh || draft.source?.title || '',
         attributes: (draft.source?.attributes ?? []).map(item => ({ name: item.name, value: item.value })),
         colors: (draft.product?.skus ?? []).map(item => item.color).filter(Boolean),
         categoryPath: draft.source?.breadcrumb ?? []
@@ -243,6 +245,27 @@ export function createController({ client, now = () => Date.now(), sleep = ms =>
     const mergedGlossary = { ...(glossary && typeof glossary === 'object' ? glossary : {}) };
     for (const attribute of translation.attributes ?? []) if (attribute?.name && attribute?.value) mergedGlossary[attribute.name] = attribute.value;
     await client.storage.set(glossaryKey, mergedGlossary);
+    return persistDraft(next);
+  }
+
+  async function translateOnlyTitle(draftId) {
+    const draft = find(draftId);
+    const sourceTitle = String(draft.product?.title?.zh || draft.source?.title || '').trim();
+    if (!sourceTitle) throw new Error('请先填写 1688 原文。');
+    const glossaryKey = 'glossary.' + (draft.product?.category?.sheinCategoryId || 'default');
+    const glossary = await client.storage.get(glossaryKey);
+    const title = await translateTitle({
+      client,
+      model: state.settings.model,
+      title: sourceTitle,
+      glossary: glossary && typeof glossary === 'object' ? glossary : {}
+    });
+    const next = {
+      ...draft,
+      product: { ...draft.product, title: { ...draft.product.title, en: title.slice(0, 200) } },
+      updated: now()
+    };
+    next.issues = validateDraft(next);
     return persistDraft(next);
   }
 
@@ -442,7 +465,7 @@ export function createController({ client, now = () => Date.now(), sleep = ms =>
 
   return Object.freeze({
     load, saveSettings, setSecret, clearSecret, startAuthorization, awaitAuthorization, resetAuthorizationTab, authorize, credentialStatus, aiCatalog, imageCatalog,
-    collect, translate, prepareImages, loadCategories, loadTemplate, suggestCategory, ensureTab,
+    collect, translate, translateOnlyTitle, prepareImages, loadCategories, loadTemplate, suggestCategory, ensureTab,
     saveDraft, submit, poll, remove, resume,
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
     getState() { return state; },

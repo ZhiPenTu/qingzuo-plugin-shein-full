@@ -79,6 +79,30 @@ test('采集链接后生成草稿，并把标签页归属记在草稿上', async
   await assert.rejects(() => controller.collect('https://www.taobao.com/item/1'), /1688/);
 });
 
+test('1688 原文可编辑，标题翻译只写英文标题并保存到草稿', async () => {
+  const { controller, calls, storage } = await readyController();
+  const draft = await controller.collect(SOURCE);
+  const edited = await controller.saveDraft(draft.id, { product: { title: { zh: '定制中文标题', en: '' } } });
+  assert.equal(edited.product.title.zh, '定制中文标题');
+
+  const saved = await controller.translateOnlyTitle(draft.id);
+  assert.equal(saved.product.title.en, 'Mock translated title');
+  assert.equal(saved.product.title.zh, '定制中文标题');
+  assert.equal(saved.source.title, draft.source.title);
+  assert.equal(storage.get('drafts')[0].product.title.en, 'Mock translated title');
+  const request = calls.ai.filter(([name]) => name === 'complete').at(-1)[1];
+  assert.equal(JSON.parse(request.messages[1].content).title, '定制中文标题');
+});
+
+test('整篇翻译使用编辑后的 1688 原文', async () => {
+  const { controller, calls } = await readyController();
+  const draft = await controller.collect(SOURCE);
+  await controller.saveDraft(draft.id, { product: { title: { zh: '定制中文标题' } } });
+  await controller.translate(draft.id);
+  const request = calls.ai.filter(([name]) => name === 'complete').at(-1)[1];
+  assert.equal(JSON.parse(request.messages[1].content).title, '定制中文标题');
+});
+
 test('旧版全托管正式接口域名自动迁移到当前域名', async () => {
   const fake = createFakeClient({ snapshot });
   await fake.storage.set('settings', {
@@ -394,4 +418,13 @@ test('图片模型列表来自底座的代理模型目录', async () => {
   const models = await controller.imageCatalog();
   assert.deepEqual(models.map(model => model.id), ['gpt-image']);
   assert.deepEqual(fake.calls.ai.find(call => call[0] === 'models')[1], { source: 'proxy' });
+});
+
+test('保存设置可持久化自定义图像修改提示词', async () => {
+  const fake = createFakeClient({ snapshot, respond: routeOverrides() });
+  const controller = createController({ client: fake.client, now: () => 1760000000000 });
+  await controller.load();
+  assert.equal(controller.getState().settings.imagePrompt, '');
+  await controller.saveSettings({ imagePrompt: '  只把主标题改成英文，保留其余字样  ' });
+  assert.equal(controller.getState().settings.imagePrompt, '只把主标题改成英文，保留其余字样');
 });

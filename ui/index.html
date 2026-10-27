@@ -150,7 +150,11 @@
             <div class="field span-2">
               <label for="title-en">英文标题</label>
               <input id="title-en" type="text" maxlength="200" autocomplete="off">
-              <p id="title-zh" class="hint"></p>
+              <div class="source-title-row">
+                <label for="title-zh">1688 原文</label>
+                <input id="title-zh" type="text" maxlength="300" autocomplete="off">
+                <button id="translate-zh-title" class="secondary small" type="button">翻译</button>
+              </div>
             </div>
             <div class="field">
               <label for="bullets">卖点（每行一条）</label>
@@ -317,6 +321,13 @@
       <label for="translate-model">图片模型</label>
       <select id="translate-model"></select>
       <p class="hint">模型来自轻作 AI 设置；没有可用模型时先在设置里配置。</p>
+    </div>
+    <div class="field">
+      <div class="field-head">
+        <label for="translate-prompt">修改提示词</label>
+        <button id="translate-prompt-reset" class="link-btn" type="button">恢复默认</button>
+      </div>
+      <textarea id="translate-prompt" rows="4" placeholder="描述图片修改要求，例如：把中文改成自然的英文，保持商品本体、构图和排版不变"></textarea>
     </div>
     <div class="field">
       <label>处理范围</label>

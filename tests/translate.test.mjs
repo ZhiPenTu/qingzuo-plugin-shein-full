@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildMessages, parseTranslationContent, translateProduct } from '../ui/translate.mjs';
+import { buildMessages, buildTitleMessages, parseTitleTranslation, parseTranslationContent, translateProduct, translateTitle } from '../ui/translate.mjs';
 
 test('翻译结果必须是严格 JSON，缺标题或卖点直接报错', () => {
   assert.deepEqual(parseTranslationContent('```json\n{"title":"Cotton scarf","bullets":["Soft"],"description":"d","attributes":[]}\n```'), {
@@ -51,4 +51,25 @@ test('翻译通过底座文本 AI 补全，插件不持有地址与密钥', asyn
 test('底座 AI 的错误原因原样透出', async () => {
   const client = { ai: { async complete() { throw new Error('AI 服务密钥无效或未授权。'); } } };
   await assert.rejects(() => translateProduct({ client, model: '', input: { title: 'x' }, glossary: {} }), /密钥无效/);
+});
+
+test('单条原文只翻译英文标题，并要求严格 JSON', async () => {
+  assert.equal(parseTitleTranslation('```json\n{"title":"  Cotton   knit scarf  "}\n```'), 'Cotton knit scarf');
+  assert.throws(() => parseTitleTranslation('not json'), /有效的 JSON/);
+  assert.throws(() => parseTitleTranslation('{"title":""}'), /缺少英文标题/);
+
+  const calls = [];
+  const client = {
+    ai: {
+      async complete(options) { calls.push(options); return { content: '{"title":"Cotton knit scarf"}' }; }
+    }
+  };
+  const title = await translateTitle({ client, model: 'mock-translator', title: '纯棉针织围巾', glossary: { 材质: 'Cotton' } });
+  assert.equal(title, 'Cotton knit scarf');
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].model, 'mock-translator');
+  assert.equal(calls[0].responseFormat.type, 'json_object');
+  assert.equal(JSON.parse(calls[0].messages[1].content).title, '纯棉针织围巾');
+  assert.match(calls[0].messages[0].content, /材质 → Cotton/);
+  assert.match(buildTitleMessages('围巾')[0].content, /JSON/);
 });

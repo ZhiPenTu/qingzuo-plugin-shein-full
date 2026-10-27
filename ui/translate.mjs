@@ -66,3 +66,39 @@ export async function translateProduct({ client, model, input, glossary, tempera
   });
   return parseTranslationContent(response.content, input);
 }
+
+const TITLE_PROMPT = [
+  '你是跨境电商商品标题本地化编辑。把用户给出的中文 1688 商品标题写成自然、准确的英文标题。',
+  '只输出一个 JSON 对象，结构为 {"title":"英文标题"}，不要 Markdown、不要解释。',
+  '规则：',
+  '1. 只描述商品本身，不堆砌关键词，不写促销语。',
+  '2. 不超过 150 字符，服装类用美式英语，避免中英混排。',
+  '3. 不得编造材质、尺寸、认证、品牌或功能；原文没有的信息不要补。'
+].join('\n');
+
+export function buildTitleMessages(title, glossary = {}) {
+  const glossaryLines = Object.entries(glossary).slice(0, 80).map(([key, value]) => key + ' → ' + value);
+  return [
+    { role: 'system', content: TITLE_PROMPT + (glossaryLines.length ? '\n术语表（优先沿用）：\n' + glossaryLines.join('\n') : '') },
+    { role: 'user', content: JSON.stringify({ title: text(title).slice(0, 300) }) }
+  ];
+}
+
+export function parseTitleTranslation(content) {
+  const raw = String(content ?? '').trim().replace(/^```(?:json)?\s*/i, '').replace(/```$/, '').trim();
+  let value;
+  try { value = JSON.parse(raw); } catch { throw new Error('翻译服务没有返回有效的 JSON。'); }
+  const title = text(value?.title).slice(0, 200);
+  if (!title) throw new Error('翻译结果缺少英文标题。');
+  return title;
+}
+
+export async function translateTitle({ client, model, title, glossary, temperature = 0.2 }) {
+  const response = await client.ai.complete({
+    ...(text(model) ? { model: text(model) } : {}),
+    messages: buildTitleMessages(title, glossary),
+    temperature,
+    responseFormat: { type: 'json_object' }
+  });
+  return parseTitleTranslation(response.content);
+}

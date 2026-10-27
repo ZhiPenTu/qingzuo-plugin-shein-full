@@ -131,8 +131,17 @@ test('1688 采集到希音提交：确认前零发品调用，签名与幂等键
     await plugin.locator('#collect').click();
     await expect(plugin.locator('#draft-count')).toHaveText('1', { timeout: 90000 });
     await expect(plugin.locator('#review-title')).toHaveText('纯棉针织围巾 冬季加厚保暖 韩版百搭情侣款');
+    await expect(plugin.locator('#title-zh')).toHaveValue('纯棉针织围巾 冬季加厚保暖 韩版百搭情侣款');
     await expect(shell.locator('.commerce-browser-pane')).toBeVisible();
     await expect.poll(() => app.context().pages().some(candidate => candidate.url() === OFFER_URL)).toBe(true);
+
+    // 运营可以直接修正 1688 原文，再只把标题翻译回草稿。
+    await plugin.locator('#title-zh').fill('纯棉针织围巾 冬季加厚');
+    await plugin.locator('#translate-zh-title').click();
+    await expect(plugin.locator('#action-status')).toHaveText('英文标题已按原文更新。', { timeout: 90000 });
+    await expect(plugin.locator('#title-en')).toHaveValue(TRANSLATION.title);
+    const titleCall = gateway.calls.filter(call => call.path === '/v1/chat/completions').at(-1);
+    expect(titleCall.body.toString('utf8')).toContain('纯棉针织围巾 冬季加厚');
 
     await plugin.locator('#translate').click();
     await expect(plugin.locator('#action-status')).toHaveText('已生成英文文案，请逐项校对。', { timeout: 90000 });

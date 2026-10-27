@@ -264,6 +264,12 @@ const checked = await open(1280, 720, async page => {
   await page.click('#translate-images');
   await page.locator('#translate-dialog').waitFor({ state: 'visible' });
   if ((await page.locator('#translate-model option').count()) < 1) throw new Error('翻译弹窗没有图片模型');
+  if (!(await page.locator('#translate-prompt').isVisible())) throw new Error('翻译弹窗没有修改提示词输入框');
+  const defaultPrompt = await page.locator('#translate-prompt').inputValue();
+  if (!defaultPrompt.includes('英文')) throw new Error('翻译弹窗默认提示词不正确');
+  await page.fill('#translate-prompt', '把所有中文替换成简洁的美式英文标题');
+  await page.click('#translate-prompt-reset');
+  if ((await page.locator('#translate-prompt').inputValue()) !== defaultPrompt) throw new Error('恢复默认提示词未生效');
   console.log('交互断言通过：对比滑杆、查看器、翻译弹窗');
 });
 await checked.close();

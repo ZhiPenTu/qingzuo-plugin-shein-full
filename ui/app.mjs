@@ -272,7 +272,7 @@ function renderSource(form) {
 
 function renderForm(form) {
   $('title-en').value = form.product?.title?.en ?? '';
-  $('title-zh').textContent = form.product?.title?.zh ? '1688 原文：' + form.product.title.zh : '';
+  $('title-zh').value = form.product?.title?.zh ?? '';
   $('bullets').value = (form.product?.bullets ?? []).map(item => item.en).filter(Boolean).join('\n');
   $('description').value = form.product?.description?.en ?? '';
   $('category-confirmed').checked = Boolean(form.product?.category?.confirmed);
@@ -762,7 +762,7 @@ function updateGate() {
   const form = state.form;
   const busy = state.busy;
   $('collect').disabled = busy || !$('source-url').value.trim();
-  for (const id of ['translate', 'save', 'prepare-images', 'load-template', 'refresh-categories', 'suggest-category', 'delete-draft', 'translate-images']) {
+  for (const id of ['translate', 'translate-zh-title', 'save', 'prepare-images', 'load-template', 'refresh-categories', 'suggest-category', 'delete-draft', 'translate-images']) {
     const node = $(id);
     if (node) node.disabled = busy || !draft;
   }
@@ -909,6 +909,20 @@ async function doTranslate() {
   });
 }
 
+async function doTranslateTitle() {
+  await run('正在翻译原文…', async () => {
+    const draft = selectedDraft();
+    if (!draft) throw new Error('先选择草稿。');
+    if (!state.form?.product?.title?.zh?.trim()) throw new Error('请先填写 1688 原文。');
+    await saveForm();
+    const saved = await controller.translateOnlyTitle(draft.id);
+    state.form = clone(saved);
+    state.dirty = false;
+    render();
+    setStatus('action-status', '英文标题已按原文更新。');
+  });
+}
+
 async function doPrepareImages() {
   await run('正在从 1688 转存图片…', async () => {
     const draft = selectedDraft();
@@ -1012,6 +1026,12 @@ function openTranslateDialog() {
   if (!state.form) return;
   syncImageModelSelects();
   if (!state.imageModels.length) void loadImageModels();
+  const promptInput = $('translate-prompt');
+  if (!promptInput.value.trim()) {
+    promptInput.value = controller.getState().settings.imagePrompt || IMAGE_TEXT_PROMPT;
+  }
+  promptInput.disabled = false;
+  $('translate-prompt-reset').disabled = false;
   const image = currentImage();
   const translated = image ? translatedVersion(image) : null;
   const total = translationTargets(state.form.product?.images ?? [], { scope: 'all' }).length;
@@ -1126,15 +1146,25 @@ async function runImageTranslation() {
     setStatus('translate-status', '请先选择图片模型。', true);
     return;
   }
+  const prompt = $('translate-prompt').value.trim();
+  if (!prompt) {
+    setStatus('translate-status', '请填写修改提示词。', true);
+    $('translate-prompt').focus();
+    return;
+  }
   const scope = $('translate-scope-all').checked ? 'all' : 'current';
   const targets = translationTargets(state.form.product?.images ?? [], { scope, imageId: currentImage()?.id ?? null });
   if (!targets.length) {
     setStatus('translate-status', '没有可翻译的图片，请先转存图片并取消排除。', true);
     return;
   }
-  // 译文要写回草稿，先把表单里未保存的改动落到草稿上。
+  // 译文要写回草稿，先把表单里未保存的改动落到草稿上，同时记住本次使用的模型与提示词。
   try {
     await saveForm();
+    await controller.saveSettings({
+      imageModel: modelId,
+      imagePrompt: prompt === IMAGE_TEXT_PROMPT ? '' : prompt
+    });
   } catch (error) {
     setStatus('translate-status', errorText(error), true);
     return;
@@ -1148,6 +1178,8 @@ async function runImageTranslation() {
   state.translateTotal = targets.length;
   state.translateDone = 0;
   $('translate-run').disabled = true;
+  $('translate-prompt').disabled = true;
+  $('translate-prompt-reset').disabled = true;
   $('translate-cancel').textContent = '中止';
   const progress = $('translate-progress');
   progress.hidden = false;
@@ -1158,7 +1190,7 @@ async function runImageTranslation() {
     const batch = await client.ai.batch.create({
       source: 'proxy',
       modelId,
-      prompt: IMAGE_TEXT_PROMPT,
+      prompt,
       concurrency: Math.min(2, targets.length),
       items: targets.map(image => ({ token: image.token }))
     });
@@ -1180,6 +1212,8 @@ async function runImageTranslation() {
     state.translateRunning = false;
     state.translateBatch = null;
     $('translate-run').disabled = false;
+    $('translate-prompt').disabled = false;
+    $('translate-prompt-reset').disabled = false;
     $('translate-cancel').textContent = '取消';
     $('translate-progress').hidden = true;
   }
@@ -1511,6 +1545,8 @@ function bindEvents() {
   $('refresh-models').addEventListener('click', () => void loadModels());
 
   $('title-en').addEventListener('input', event => { state.form.product.title.en = event.target.value; markDirty(); });
+  $('title-zh').addEventListener('input', event => { state.form.product.title.zh = event.target.value; markDirty(); });
+  $('translate-zh-title').addEventListener('click', () => void doTranslateTitle());
   $('bullets').addEventListener('input', event => {
     state.form.product.bullets = event.target.value.split('\n').map(line => line.trim()).filter(Boolean).map(line => ({ en: line }));
     markDirty();
@@ -1527,6 +1563,10 @@ function bindEvents() {
   $('translate').addEventListener('click', () => void doTranslate());
   $('prepare-images').addEventListener('click', () => void doPrepareImages());
   $('translate-images').addEventListener('click', openTranslateDialog);
+  $('translate-prompt-reset').addEventListener('click', () => {
+    $('translate-prompt').value = IMAGE_TEXT_PROMPT;
+    void controller.saveSettings({ imagePrompt: '' });
+  });
   $('translate-cancel').addEventListener('click', closeTranslateDialog);
   $('translate-run').addEventListener('click', () => void runImageTranslation());
   $('translate-dialog').addEventListener('click', event => { if (event.target === $('translate-dialog')) closeTranslateDialog(); });
