@@ -212,7 +212,7 @@ test('用 APP_ID 与 APP_SecretKey 换取店铺凭据后即可直接发品', asy
   const started = await controller.startAuthorization({
     appId: APP_ID, appSecretKey: APP_SECRET, baseUrl: 'https://openapi-test01.sheincorp.cn'
   });
-  assert.equal(started.callbackUrl, 'https://openapi-test01.sheincorp.cn/plugin/callback?from=qingzuo');
+  assert.equal(started.callbackUrl, 'https://zhipentu.github.io/qingzuo-desktop/shein-auth-callback.html?from=qingzuo');
   const address = new URL(started.authorizeUrl);
   assert.equal(address.origin, 'https://openapi-test01.sheincorp.cn');
   const params = new URLSearchParams(address.hash.slice(address.hash.indexOf('?') + 1));

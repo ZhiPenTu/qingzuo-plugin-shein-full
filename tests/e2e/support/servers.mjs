@@ -10,6 +10,7 @@ export const SECRET_KEY = 'E2E-SECRET-KEY';
 export const APP_ID = 'E2E-APP-ID';
 export const APP_SECRET = 'E2E-APP-SECRET-0123456789ABCDEF';
 export const TEMP_TOKEN = 'E2E-TEMP-TOKEN';
+export const CALLBACK_HOST = 'zhipentu.github.io';
 // 授权页与回调地址都在希音的授权域名下，端到端里同样靠主机映射指到本机。
 export const AUTHORIZE_HOST = 'openapi-test01.sheincorp.cn';
 
@@ -74,8 +75,8 @@ if (redirect) location.replace(atob(redirect) + '&tempToken=${TEMP_TOKEN}&state=
   '&appid=' + encodeURIComponent(query.get('appid') || '') + '&redirect=' + encodeURIComponent(redirect));
 </script></body></html>`;
 
-const CALLBACK_PAGE = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>授权完成</title></head>
-<body><p>授权已完成，可以回到轻作。</p></body></html>`;
+const CALLBACK_PAGE = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>希音授权成功 · 轻作</title></head>
+  <body><main><h1>希音授权成功</h1><p>请返回轻作继续操作。</p></main></body></html>`;
 
 // 1688 页面与希音授权页都用真实域名提供：测试靠 Chromium 的主机映射把它们指到本机 HTTPS 服务。
 export async function startStorefront({ key, cert }) {
@@ -91,6 +92,11 @@ export async function startStorefront({ key, cert }) {
     if (host === AUTHORIZE_HOST) {
       response.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
       response.end(address.searchParams.has('tempToken') ? CALLBACK_PAGE : AUTHORIZE_PAGE);
+      return;
+    }
+    if (host === CALLBACK_HOST && pathname === '/qingzuo-desktop/shein-auth-callback.html') {
+      response.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+      response.end(CALLBACK_PAGE);
       return;
     }
     if (pathname === '/main.png' || pathname === '/detail.png') {

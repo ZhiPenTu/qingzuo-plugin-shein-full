@@ -6,7 +6,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { pack } from '@commerce/plugin-sdk/cli';
-import { APP_ID, APP_SECRET, AUTHORIZE_HOST, OFFER_URL, OPEN_KEY_ID, SECRET_KEY, TEMP_TOKEN, TRANSLATION, startGateway, startStorefront } from './support/servers.mjs';
+import { APP_ID, APP_SECRET, AUTHORIZE_HOST, CALLBACK_HOST, OFFER_URL, OPEN_KEY_ID, SECRET_KEY, TEMP_TOKEN, TRANSLATION, startGateway, startStorefront } from './support/servers.mjs';
 
 const repo = process.cwd();
 const pkg = JSON.parse(readFileSync(path.join(repo, 'package.json'), 'utf8'));
@@ -67,7 +67,7 @@ test('1688 采集到希音提交：确认前零发品调用，签名与幂等键
     app = await _electron.launch({
       executablePath: electronBinary(root),
       args: [root, '--user-data-dir=' + path.join(temporary, 'profile'),
-        '--host-resolver-rules=MAP detail.1688.com 127.0.0.1:' + storefront.port + ', MAP ' + AUTHORIZE_HOST + ' 127.0.0.1:' + storefront.port,
+        '--host-resolver-rules=MAP detail.1688.com 127.0.0.1:' + storefront.port + ', MAP ' + AUTHORIZE_HOST + ' 127.0.0.1:' + storefront.port + ', MAP ' + CALLBACK_HOST + ' 127.0.0.1:' + storefront.port,
         '--ignore-certificate-errors'],
       cwd: temporary, env, timeout: 120000
     });
@@ -104,7 +104,7 @@ test('1688 采集到希音提交：确认前零发品调用，签名与幂等键
     await plugin.locator('#save-settings').click();
     await expect(plugin.locator('#settings-status')).toHaveText('设置已保存。');
     // 回调地址由插件按所选环境生成，商家不用再去开放平台复制授权码。
-    await expect(plugin.locator('#callback-url')).toHaveValue('https://openapi-test01.sheincorp.cn/plugin/callback?from=qingzuo');
+    await expect(plugin.locator('#callback-url')).toHaveValue('https://zhipentu.github.io/qingzuo-desktop/shein-auth-callback.html?from=qingzuo');
     await plugin.locator('#authorize').click();
     await expect(plugin.locator('#shein-status')).toHaveText('已连接希音，可以提交发品。', { timeout: 60000 });
     // 换到的 openKeyId 与解密的 secretKey 都进了设置和凭据库，APP_SecretKey 不留在界面上。
@@ -113,10 +113,10 @@ test('1688 采集到希音提交：确认前零发品调用，签名与幂等键
     await plugin.locator('#toggle-settings').click();
 
     // 授权页确实是插件自己打开的：appid 与回调地址都对得上，state 原样带回来。
-    const callback = storefront.hits.find(hit => hit.host === AUTHORIZE_HOST && hit.query.tempToken);
+    const callback = storefront.hits.find(hit => hit.host === CALLBACK_HOST && hit.query.tempToken);
     expect(callback).toBeTruthy();
     expect(callback.query.appid).toBe(APP_ID);
-    expect(Buffer.from(callback.query.redirect, 'base64').toString('utf8')).toBe('https://openapi-test01.sheincorp.cn/plugin/callback?from=qingzuo');
+    expect(Buffer.from(callback.query.redirect, 'base64').toString('utf8')).toBe('https://zhipentu.github.io/qingzuo-desktop/shein-auth-callback.html?from=qingzuo');
     expect(callback.query.state).toMatch(/^qz[0-9a-f]{24}$/);
 
     const exchange = gateway.sheet().find(call => call.path === '/open-api/auth/get-by-token');

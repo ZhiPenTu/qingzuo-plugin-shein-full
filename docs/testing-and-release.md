@@ -19,7 +19,7 @@
 
 1. 用 `@commerce/plugin-sdk/cli` 的 `pack` 把 `ui/` 打成临时 `.ecplugin`，SDK 直接取安装依赖里的同一份。
 2. 用 `_electron.launch` 启动 `QINGZUO_DESKTOP_ROOT` 指向的底座，带上临时 `--user-data-dir`。
-3. 用 Chromium 的 `--host-resolver-rules` 把 `detail.1688.com` 与希音测试授权域名 `openapi-test01.sheincorp.cn` 一起指到本机 HTTPS 服务，证书是临时自签的，所以启动参数里有 `--ignore-certificate-errors`。这台服务同时模拟 1688 详情页、希音授权页与授权回调，授权页会把 `appid`、回调地址和 `state` 原样带回回调，用来断言插件自己走完了整条授权链路。
+3. 用 Chromium 的 `--host-resolver-rules` 把 `detail.1688.com`、希音测试授权域名 `openapi-test01.sheincorp.cn` 和轻作回调页域名 `zhipentu.github.io` 一起指到本机 HTTPS 服务，证书是临时自签的，所以启动参数里有 `--ignore-certificate-errors`。这台服务同时模拟 1688 详情页、希音授权页与授权回调，授权页会把 `appid`、回调地址和 `state` 原样带回回调，用来断言插件自己走完了整条授权链路。
 4. 通过 `COMMERCE_TEST_NETWORK_ROUTES` 把希音测试主机重定向到本机 mock 网关；AI 模型目录和补全由同一个 mock 网关的 `/v1/models` 与 `/v1/chat/completions` 提供。
 5. 在底座里导入插件、配置 mock AI、打开工具、填希音设置与密钥，再走完整流程。
 

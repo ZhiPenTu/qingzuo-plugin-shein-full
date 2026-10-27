@@ -23,7 +23,7 @@
 2. 调 `POST /open-api/auth/get-by-token`，请求头用 `x-lt-appid`，签名用 `APP_ID`（顶替 `openKeyId`）与 `APP_SecretKey` 生成，请求体是 `{ "tempToken": "..." }`。
 3. 返回的 `info.openKeyId` 直接可用；`info.secretKey` 是密文，要用 `APP_SecretKey` 解密：密钥取 `APP_SecretKey` 的 UTF-8 前 16 字节，AES-128-CBC，IV 固定 `space-station-de`，PKCS7 补齐。
 
-插件把这三步做成了「连接希音」按钮：填 APP_ID、APP_SecretKey，点一下打开授权页，商家确认后就自动读回 `tempToken`，把 `openKeyId` 存进设置、解密后的 `secretKey` 存进系统凭据库。授权页与回调地址都由插件按所选环境生成：全托管正式环境授权页在 `https://openapi-sem.sheincorp.com`，回调地址在 `https://openapi.sheincorp.com/plugin/callback`，业务接口仍在 `https://openapi.sheincorp.cn`；测试环境两者都在 `https://openapi-test01.sheincorp.cn/plugin/callback`。`state` 每次授权都不同，回来的 `state` 对不上就不算这次的结果。
+插件把这三步做成了「连接希音」按钮：填 APP_ID、APP_SecretKey，点一下打开授权页，商家确认后就自动读回 `tempToken`，把 `openKeyId` 存进设置、解密后的 `secretKey` 存进系统凭据库。授权页由插件按所选环境生成：全托管正式环境在 `https://openapi-sem.sheincorp.com`，测试环境在 `https://openapi-test01.sheincorp.cn`；回调统一落在 `https://zhipentu.github.io/qingzuo-desktop/shein-auth-callback.html`。`state` 每次授权都不同，回来的 `state` 对不上就不算这次的结果。
 
 手里已经有店铺 `openKeyId` 与 `secretKey` 时（例如测试店铺直接给出的那一对），展开「已有店铺 openKeyId 与 secretKey」直接填写即可，不必走授权流程。
 
