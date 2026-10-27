@@ -34,9 +34,21 @@ export const TRANSLATION = Object.freeze({
 
 // 标题建议走带图的补全请求，假服务据此返回三条候选，也顺带证明图片确实发到了模型服务。
 export const TITLE_SUGGESTIONS = Object.freeze([
-  'Cream cotton knit scarf with ribbed texture',
-  'Winter warm knit scarf for couples',
-  'Soft everyday knit scarf in cream and black'
+  {
+    angle: '主推爆款长标题',
+    why: '英站首选，字符合规',
+    title: 'Cream Ribbed Knit Scarf, Soft Cotton Neck Wrap for Winter Daily Wear, Warm Couple Scarf for Outdoor Travel'
+  },
+  {
+    angle: '加长 SEO 长尾款',
+    why: '抓更多搜索词，流量更大',
+    title: 'Winter Warm Knit Scarf for Couples, Ribbed Cream Cotton Neck Wrap, Soft Everyday Scarf for Travel Outdoor Work and Gifts'
+  },
+  {
+    angle: '精简稳妥款',
+    why: '不容易超字符，属性匹配',
+    title: 'Cream Ribbed Cotton Knit Scarf'
+  }
 ]);
 
 // 只有这些接口会真正动希音后台：查重、发品权限、额度、图片上传、发品、审核状态。
@@ -194,7 +206,7 @@ export async function startGateway() {
     }
     if (pathname === '/v1/chat/completions') {
       const withImage = body.toString('utf8').includes('"image_url"');
-      const content = withImage ? { titles: TITLE_SUGGESTIONS } : TRANSLATION;
+      const content = withImage ? { versions: TITLE_SUGGESTIONS } : TRANSLATION;
       response.writeHead(200, { 'content-type': 'application/json' });
       response.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(content) } }] }));
       return;

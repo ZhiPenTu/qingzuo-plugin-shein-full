@@ -11,7 +11,7 @@
     "category": "电商工具",
     "api": "^1.5.0",
     "ui": "ui/index.html",
-    "releaseNotes": "「翻译」改为 AI 爆款标题弹窗：结合商品主图与 1688 信息给出 3 个候选标题，选定后写入草稿，另可一键按原文直译。",
+    "releaseNotes": "「翻译」改为 AI 爆款标题弹窗：结合商品主图与 1688 信息，按主推、SEO 长尾、精简稳妥三种策略各给一条带字符数的候选，选定后写入草稿，另可一键按原文直译。",
     "permissions": {
       "files": true,
       "storage": true,

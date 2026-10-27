@@ -100,15 +100,27 @@ const draft = {
   notes: []
 };
 
-const VISION_TITLES = [
-  'Breathable mesh docker cap for daily wear',
-  'All-season brimless sailor cap in black and navy',
-  'Adjustable mesh skullcap with vintage docker fit'
+const VISION_VERSIONS = [
+  {
+    angle: '主推爆款长标题',
+    why: '英站首选，字符合规',
+    title: 'Breathable Mesh Docker Cap for Men, Brimless Sailor Skullcap with Adjustable Buckle, Vintage Solid Color Hat for Daily Outdoor Wear'
+  },
+  {
+    angle: '加长 SEO 长尾款',
+    why: '抓更多搜索词，流量更大',
+    title: 'All-Season Brimless Mesh Docker Cap for Men, Breathable Sailor Skullcap in Black and Navy, Adjustable Vintage Hat for Outdoor Work Travel'
+  },
+  {
+    angle: '精简稳妥款',
+    why: '不容易超字符，属性匹配',
+    title: 'Adjustable Mesh Skullcap in Black'
+  }
 ];
 const VISION_IMAGE = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
 const mockScript = `(() => {
-  const titles = ${JSON.stringify(VISION_TITLES)};
+  const versions = ${JSON.stringify(VISION_VERSIONS)};
   const images = ${JSON.stringify(IMAGES)};
   const store = {
     settings: { coefficient: 1.35, site: 'shein', baseUrl: 'https://openapi.sheincorp.cn', openKeyId: 'test-key', model: '', imageModel: 'gpt-image-1' },
@@ -123,7 +135,7 @@ const mockScript = `(() => {
       if (method === 'files.read') return { data: '${VISION_IMAGE}', mime: 'image/png' };
       if (method === 'credentials.status') return false;
       if (method === 'ai.textModels') return { models: [{ id: 'mock-writer', title: 'Mock Writer' }], defaultModel: 'mock-writer' };
-      if (method === 'ai.complete') return { content: JSON.stringify({ titles }), model: 'mock-writer' };
+      if (method === 'ai.complete') return { content: JSON.stringify({ versions }), model: 'mock-writer' };
       if (method === 'ai.models') return [
         { id: 'gpt-image-1', source: 'proxy', provider: 'openai', title: 'GPT Image', sizes: ['1024x1024'] },
         { id: 'nano-banana', source: 'proxy', provider: 'google', title: 'Nano Banana', sizes: ['1024x1024'] }
@@ -160,7 +172,7 @@ async function auditLayout(page, label) {
     const doc = document.documentElement;
     const rows = [];
     if (doc.scrollWidth > window.innerWidth + 1) rows.push(`文档宽度 ${doc.scrollWidth} > 视口 ${window.innerWidth}`);
-    for (const selector of ['.app', '.review', '.image-workspace', '.image-toolbar', '.image-controls-bar', '.review-footer', '.pane:not([hidden])', '.thumb-grid', '.title-dialog-body']) {
+    for (const selector of ['.app', '.review', '.image-workspace', '.image-toolbar', '.image-controls-bar', '.review-footer', '.pane:not([hidden])', '.thumb-grid', '.title-dialog-body', '.title-options']) {
       const node = document.querySelector(selector);
       if (node && node.scrollWidth > node.clientWidth + 1) rows.push(`${selector} 横向溢出 ${node.scrollWidth - node.clientWidth}px`);
     }
@@ -245,6 +257,11 @@ await shot(await open(1600, 1000, async page => {
   await page.locator('.title-option').nth(1).click();
   await auditLayout(page, '标题建议弹窗');
 }), '/tmp/preview_1600_title_dialog.png');
+await shot(await open(900, 900, async page => {
+  await page.click('#translate-zh-title');
+  await page.locator('.title-option').first().waitFor();
+  await auditLayout(page, '标题建议弹窗（窄屏）');
+}), '/tmp/preview_900_title_dialog.png');
 await shot(await open(1600, 1000, async page => {
   await page.click('#toggle-settings');
   await page.waitForTimeout(300);

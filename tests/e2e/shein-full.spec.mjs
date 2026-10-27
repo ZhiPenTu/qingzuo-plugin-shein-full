@@ -175,6 +175,10 @@ test('1688 采集到希音提交：确认前零发品调用，签名与幂等键
     await expect(plugin.locator('#title-dialog-facts')).toContainText('纯棉针织围巾 冬季加厚');
     await expect(plugin.locator('#title-dialog-preview')).toBeVisible();
     await expect(plugin.locator('.title-option')).toHaveCount(3, { timeout: 90000 });
+    await expect(plugin.locator('.title-option').nth(0)).toContainText('版本 1');
+    await expect(plugin.locator('.title-option').nth(1)).toContainText('加长 SEO 长尾款');
+    await expect(plugin.locator('.title-option').nth(2)).toContainText('精简稳妥款');
+    await expect(plugin.locator('.title-option').nth(1)).toContainText(String(TITLE_SUGGESTIONS[1].title.length) + ' 字符');
     const suggestionCall = gateway.calls.filter(call => call.path === '/v1/chat/completions').at(-1);
     const suggestionBody = suggestionCall.body.toString('utf8');
     expect(suggestionBody).toContain('"image_url"');
@@ -185,7 +189,7 @@ test('1688 采集到希音提交：确认前零发品调用，签名与幂等键
     await expect(plugin.locator('#title-dialog-apply')).toBeEnabled();
     await plugin.locator('#title-dialog-apply').click();
     await expect(plugin.locator('#title-dialog')).toBeHidden();
-    await expect(plugin.locator('#title-en')).toHaveValue(TITLE_SUGGESTIONS[1]);
+    await expect(plugin.locator('#title-en')).toHaveValue(TITLE_SUGGESTIONS[1].title);
 
     const rows = plugin.locator('#sku-body tr');
     await expect(rows).toHaveCount(2);
@@ -251,7 +255,7 @@ test('1688 采集到希音提交：确认前零发品调用，签名与幂等键
     expect(publish.main_site).toBe('shein');
     expect(publish.category_id).toBe(1234);
     expect(publish.product_type_id).toBe(5678);
-    expect(publish.multi_language_name_list).toEqual([{ language: 'en', name: TITLE_SUGGESTIONS[1] }]);
+    expect(publish.multi_language_name_list).toEqual([{ language: 'en', name: TITLE_SUGGESTIONS[1].title }]);
     expect(publish.skc_list).toHaveLength(2);
     expect(publish.skc_list.map(skc => skc.sku_list[0].supplier_price)).toEqual([16.88, 17.55]);
     expect(publish.skc_list.map(skc => skc.sale_attribute.attribute_value_id)).toEqual([9001, 9002]);

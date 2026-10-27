@@ -312,12 +312,13 @@ export function createController({ client, now = () => Date.now(), sleep = ms =>
       imageUrl: image.url,
       glossary: await readGlossary(draft)
     });
-    return { titles: result.titles, usedImage: result.usedImage, image: { token: image.token, name: image.name } };
+    return { versions: result.versions, usedImage: result.usedImage, image: { token: image.token, name: image.name } };
   }
 
-  async function applyTitle(draftId, title) {
+  async function applyTitle(draftId, candidate) {
     const draft = find(draftId);
-    const value = String(title ?? '').replace(/\s+/g, ' ').trim();
+    // 界面传的是整条候选（带策略说明），直接传字符串也仍然可用。
+    const value = String(typeof candidate === 'string' ? candidate : candidate?.title ?? '').replace(/\s+/g, ' ').trim();
     if (!value) throw new Error('请先选择一条标题。');
     return saveEnglishTitle(draft, value);
   }

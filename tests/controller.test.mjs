@@ -95,8 +95,12 @@ test('1688 原文可编辑，标题翻译只写英文标题并保存到草稿', 
 });
 
 test('标题建议把主图和商品信息一起交给模型，选定后才写回英文标题', async () => {
-  const titles = ['Cream cotton knit scarf', 'Winter warm knit scarf for couples', 'Soft ribbed knit scarf in cream'];
-  const fake = createFakeClient({ snapshot, complete: () => ({ content: JSON.stringify({ titles }), model: 'mock-translator' }) });
+  const versions = [
+    { angle: '主推爆款长标题', why: '英站首选，字符合规', title: 'Cream cotton knit scarf' },
+    { angle: '加长 SEO 长尾款', why: '抓更多搜索词，流量更大', title: 'Winter warm knit scarf for couples' },
+    { angle: '精简稳妥款', why: '不容易超字符，属性匹配', title: 'Soft ribbed knit scarf in cream' }
+  ];
+  const fake = createFakeClient({ snapshot, complete: () => ({ content: JSON.stringify({ versions }), model: 'mock-translator' }) });
   const controller = createController({
     client: fake.client,
     now: () => 1760000000000,
@@ -107,7 +111,8 @@ test('标题建议把主图和商品信息一起交给模型，选定后才写�
   await controller.prepareImages(draft.id);
 
   const result = await controller.suggestTitles(draft.id);
-  assert.deepEqual(result.titles, titles);
+  assert.deepEqual(result.versions.map(item => item.title), versions.map(item => item.title));
+  assert.equal(result.versions[1].angle, '加长 SEO 长尾款');
   assert.equal(result.usedImage, true);
   assert.ok(result.image.token);
 
@@ -119,10 +124,13 @@ test('标题建议把主图和商品信息一起交给模型，选定后才写�
 
   // 生成候选不改草稿，选定之后才写英文标题。
   assert.equal(fake.storage.get('drafts')[0].product.title.en, '');
-  const saved = await controller.applyTitle(draft.id, titles[1]);
-  assert.equal(saved.product.title.en, titles[1]);
-  assert.equal(fake.storage.get('drafts')[0].product.title.en, titles[1]);
+  const saved = await controller.applyTitle(draft.id, result.versions[1]);
+  assert.equal(saved.product.title.en, versions[1].title);
+  assert.equal(fake.storage.get('drafts')[0].product.title.en, versions[1].title);
+  // 直接传字符串的老用法保持可用。
+  assert.equal((await controller.applyTitle(draft.id, versions[2].title)).product.title.en, versions[2].title);
   await assert.rejects(controller.applyTitle(draft.id, '   '), /请先选择一条标题/);
+  await assert.rejects(controller.applyTitle(draft.id, { angle: '精简稳妥款', title: '  ' }), /请先选择一条标题/);
 });
 
 test('整篇翻译使用编辑后的 1688 原文', async () => {

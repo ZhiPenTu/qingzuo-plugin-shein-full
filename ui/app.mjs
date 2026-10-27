@@ -48,7 +48,7 @@ const state = {
   translateBatch: null,
   translateTotal: 0,
   translateDone: 0,
-  titleDialog: { open: false, loading: false, titles: [], selected: '', usedImage: false }
+  titleDialog: { open: false, loading: false, versions: [], selected: '', usedImage: false }
 };
 
 // APP_SecretKey 只在换取店铺凭据时需要明文：签名走主进程里的凭据，
@@ -956,23 +956,34 @@ function renderTitleFacts() {
 function renderTitleOptions() {
   const list = $('title-dialog-options');
   list.replaceChildren();
-  const { titles, selected, loading } = state.titleDialog;
-  if (!titles.length) list.append(el('p', { class: 'hint', text: loading ? '正在生成候选标题…' : '还没有候选标题。' }));
-  titles.forEach((title, index) => {
+  const { versions, selected, loading } = state.titleDialog;
+  if (!versions.length) list.append(el('p', { class: 'hint', text: loading ? '正在生成候选标题…' : '还没有候选标题。' }));
+  versions.forEach((version, index) => {
     const input = el('input', { type: 'radio', name: 'title-option', value: String(index) });
     input.checked = selected === String(index);
     input.addEventListener('change', () => {
       state.titleDialog.selected = String(index);
       $('title-dialog-apply').disabled = false;
     });
-    list.append(el('label', { class: 'title-option' }, input, el('span', { text: title })));
+    // 每条候选先写清它按什么策略写，再看标题本身，运营才知道该选哪一条。
+    list.append(el('label', { class: 'title-option' },
+      input,
+      el('span', { class: 'title-option-body' },
+        el('span', { class: 'title-option-head' },
+          el('strong', { text: '版本 ' + (index + 1) }),
+          el('span', { class: 'title-option-angle', text: '| ' + version.angle + (version.why ? '（' + version.why + '）' : '') }),
+          el('span', { class: 'title-option-count', text: version.length + ' 字符' })
+        ),
+        el('span', { class: 'title-option-text', text: version.title })
+      )
+    ));
   });
   $('title-dialog-apply').disabled = !selected;
 }
 
 function openTitleDialog() {
   if (!state.form) return;
-  state.titleDialog = { open: true, loading: false, titles: [], selected: '', usedImage: false };
+  state.titleDialog = { open: true, loading: false, versions: [], selected: '', usedImage: false };
   setStatus('title-dialog-status', '');
   $('title-dialog-translate').disabled = false;
   renderTitlePreview();
@@ -990,7 +1001,7 @@ async function generateTitles() {
     return;
   }
   state.titleDialog.loading = true;
-  state.titleDialog.titles = [];
+  state.titleDialog.versions = [];
   state.titleDialog.selected = '';
   renderTitleOptions();
   $('title-dialog-retry').disabled = true;
@@ -999,7 +1010,7 @@ async function generateTitles() {
     // 原文可能还有没保存的改动，先落到草稿上，标题建议才用的是当前内容。
     await saveForm();
     const result = await controller.suggestTitles(draft.id);
-    state.titleDialog.titles = result.titles;
+    state.titleDialog.versions = result.versions;
     state.titleDialog.usedImage = result.usedImage;
     renderTitlePreview();
     setStatus('title-dialog-status', result.usedImage ? '' : '当前模型读不到图片，已按商品信息生成。');
@@ -1014,11 +1025,11 @@ async function generateTitles() {
 
 async function applySelectedTitle() {
   const draft = selectedDraft();
-  const title = state.titleDialog.titles[Number(state.titleDialog.selected)];
-  if (!draft || !title) return;
+  const version = state.titleDialog.versions[Number(state.titleDialog.selected)];
+  if (!draft || !version) return;
   $('title-dialog-apply').disabled = true;
   try {
-    const saved = await controller.applyTitle(draft.id, title);
+    const saved = await controller.applyTitle(draft.id, version);
     state.form = clone(saved);
     state.dirty = false;
     render();
