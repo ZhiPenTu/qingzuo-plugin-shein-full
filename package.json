@@ -1,6 +1,6 @@
 {
   "name": "@commerce/plugin-shein-full",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "private": true,
   "type": "module",
   "commerce": {
@@ -11,7 +11,7 @@
     "category": "电商工具",
     "api": "^1.5.0",
     "ui": "ui/index.html",
-    "releaseNotes": "「翻译」改为 AI 爆款标题弹窗：结合商品主图与 1688 信息，按主推、SEO 长尾、精简稳妥三种策略各给一条带字符数的候选，选定后写入草稿，另可一键按原文直译。",
+    "releaseNotes": "1688 变体采集更完整：颜色与规格分列读取，支持跨行合并的规格表和卡片式变体，SKU 上限提升到 200 条，并带上库存与货号；供货价可直接修改，手动价优先，也可一键按系数重算；采集前先确认 1688 登录状态，未登录时停在首页等待登录，不再先加载商品页。",
     "permissions": {
       "files": true,
       "storage": true,
