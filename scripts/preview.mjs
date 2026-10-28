@@ -307,5 +307,25 @@ const checked = await open(1280, 720, async page => {
 });
 await checked.close();
 
+// 供货价可手动改写；改过的价不随加价系数变化，「按系数重算」后回到系数价。
+const pricing = await open(1280, 720, async page => {
+  const supplies = page.locator('#sku-body input.supply');
+  await supplies.first().waitFor();
+  if (Math.abs(Number(await supplies.nth(1).inputValue()) - 2.7) > 0.001) throw new Error('供货价默认值不正确');
+  await supplies.first().fill('3.15');
+  await page.locator('#coefficient').fill('1.5');
+  await page.waitForTimeout(100);
+  if (Number(await supplies.first().inputValue()) !== 3.15) throw new Error('手动供货价被加价系数覆盖');
+  if (Math.abs(Number(await supplies.nth(1).inputValue()) - 3) > 0.001) throw new Error('未手动的供货价没有按新系数重算');
+  const hint = await page.locator('#coefficient-hint').textContent();
+  if (!hint.includes('1 个供货价已手动调整')) throw new Error('手动供货价数量提示缺失：' + hint);
+  await page.click('#recalc-prices');
+  await page.waitForTimeout(100);
+  if (Math.abs(Number(await supplies.first().inputValue()) - 3) > 0.001) throw new Error('按系数重算没有恢复手改价');
+  if ((await page.locator('#coefficient-hint').textContent()).includes('手动调整')) throw new Error('重算后仍显示手动调整');
+  console.log('交互断言通过：供货价手改、系数重算与按系数恢复');
+});
+await pricing.close();
+
 await browser.close();
 server.close();

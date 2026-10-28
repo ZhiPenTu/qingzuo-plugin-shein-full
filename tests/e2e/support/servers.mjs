@@ -83,6 +83,11 @@ table{border-collapse:collapse;margin:12px 0}td,th{border:1px solid #ccc;padding
 <div><img src="/detail.png" alt="详情图" style="width:900px;height:600px"></div>
 </body></html>`;
 
+// 登录预检会先打开 1688 首页；端到端里给一个已登录的首页，避免去访问真实站点。
+const HOME_PAGE = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>阿里巴巴 1688.com</title></head>
+<body><nav><a href="/">首页</a><a href="/member">我的阿里</a><a href="/message">消息</a><a href="/seller">卖家中心</a></nav>
+<h1>1688 采购批发</h1></body></html>`;
+
 const AUTHORIZE_PAGE = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>希音授权</title></head>
 <body><p>正在完成店铺授权…</p>
 <script>
@@ -116,6 +121,11 @@ export async function startStorefront({ key, cert }) {
     if (host === CALLBACK_HOST && pathname === '/qingzuo-desktop/shein-auth-callback.html') {
       response.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
       response.end(CALLBACK_PAGE);
+      return;
+    }
+    if (host === 'www.1688.com') {
+      response.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+      response.end(HOME_PAGE);
       return;
     }
     if (pathname === '/main.png' || pathname === '/detail.png') {

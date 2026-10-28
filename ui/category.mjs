@@ -28,7 +28,11 @@ export function parseAttributeTemplate(info) {
   const color = attributes.find(attribute => attribute.type === SALES_ATTRIBUTE && /颜色|色|color/i.test(attribute.name))
     ?? attributes.find(attribute => attribute.type === SALES_ATTRIBUTE)
     ?? null;
-  return { attributes, colorAttribute: color };
+  // 全托管按「颜色 = SKC，尺码 = SKU」拆分；类目模板里的另一个销售属性就是尺码。
+  const size = attributes.find(attribute => attribute.type === SALES_ATTRIBUTE && attribute.id !== color?.id && /尺码|尺寸|码数|size/i.test(attribute.name))
+    ?? attributes.find(attribute => attribute.type === SALES_ATTRIBUTE && attribute.id !== color?.id)
+    ?? null;
+  return { attributes, colorAttribute: color, sizeAttribute: size };
 }
 
 export function applyAttributeTemplate(draft, template) {
@@ -56,7 +60,12 @@ export function applyAttributeTemplate(draft, template) {
     product: {
       ...draft.product,
       attributes,
-      category: { ...draft.product.category, colorAttributeId: template.colorAttribute?.id ?? '', confirmed: true }
+      category: {
+        ...draft.product.category,
+        colorAttributeId: template.colorAttribute?.id ?? '',
+        sizeAttributeId: template.sizeAttribute?.id ?? '',
+        confirmed: true
+      }
     }
   };
 }

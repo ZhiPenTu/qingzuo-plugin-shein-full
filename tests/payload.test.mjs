@@ -86,3 +86,25 @@ test('类目或图片缺失时拒绝组装载荷', () => {
   missingColor.product.skus[0].colorAttributeValueId = '';
   assert.throws(() => buildPublishPayload(missingColor), /颜色/);
 });
+
+test('手动改过的供货价进入发品载荷，未改的仍按系数换算', () => {
+  const draft = sampleDraft();
+  draft.product.skus[0].supplyPriceOverride = 25.99;
+  const payload = buildPublishPayload(draft);
+  assert.deepEqual(payload.skc_list.map(skc => skc.sku_list[0].supplier_price), [25.99, 17.55]);
+});
+
+test('类目模板带尺码时，同一颜色的 SKU 分别带上尺码属性值', () => {
+  const draft = sampleDraft();
+  draft.product.category.sizeAttributeId = '3001';
+  draft.product.skus = [
+    { ...draft.product.skus[0], supplierSku: 'A-01', sizeAttributeValueId: '9101' },
+    { ...draft.product.skus[0], supplierSku: 'A-02', sizeAttributeValueId: '9102' }
+  ];
+  const payload = buildPublishPayload(draft);
+  assert.equal(payload.skc_list.length, 1);
+  assert.deepEqual(payload.skc_list[0].sku_list.map(sku => sku.sale_attribute_list), [
+    [{ attribute_id: 2001, attribute_value_id: 9001 }, { attribute_id: 3001, attribute_value_id: 9101 }],
+    [{ attribute_id: 2001, attribute_value_id: 9001 }, { attribute_id: 3001, attribute_value_id: 9102 }]
+  ]);
+});

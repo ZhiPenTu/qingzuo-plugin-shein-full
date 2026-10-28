@@ -1,4 +1,4 @@
-import { parseProductSnapshot } from './collect.mjs';
+import { detectLoginState, parseProductSnapshot } from './collect.mjs';
 import {
   applyTranslation, blockingIssues, canTransition, coefficientOf, createDraft, markSubmitted, applyDocumentState,
   setImages, skuSupplyPriceOf, submissionKey, transition, upsertDraft, validateDraft
@@ -32,6 +32,17 @@ export const DEFAULT_SETTINGS = Object.freeze({
 });
 
 const ALLOWED_SOURCE_HOSTS = new Set(['detail.1688.com', 'm.1688.com', 'www.1688.com']);
+const LOGIN_HOME_URL = 'https://www.1688.com/';
+const LOGIN_TTL_MS = 10 * 60 * 1000;
+const LOGIN_UNKNOWN_TTL_MS = 60 * 1000;
+const LOGIN_REQUIRED = '还没有登录 1688。右侧浏览器已打开 1688，请先完成登录，再点「采集」。';
+
+function isLoginHome(value) {
+  try {
+    const url = new URL(String(value ?? ''));
+    return url.hostname.toLowerCase() === 'www.1688.com' && (url.pathname === '/' || url.pathname === '');
+  } catch { return false; }
+}
 
 export function sourceUrlOf(value) {
   let url;
@@ -58,9 +69,38 @@ function mergeConfig(draft, patch) {
 }
 
 export function createController({ client, now = () => Date.now(), sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), prepareVisionImage = fitForVision }) {
-  const state = { settings: { ...DEFAULT_SETTINGS }, drafts: [], tabId: null, loaded: false, categories: null };
+  const state = { settings: { ...DEFAULT_SETTINGS }, drafts: [], tabId: null, loaded: false, categories: null, login: null };
   const listeners = new Set();
   const notify = () => { for (const listener of listeners) { try { listener(); } catch {} } };
+
+  // 1688 未登录时商品页只给残缺数据（常常只剩一个默认 SKU），所以在打开商品链接之前
+  // 先用当前标签页或 1688 首页确认登录态。已确认登录的会话缓存 10 分钟，避免每次采集都多开一页。
+  async function loginSnapshot() {
+    const tabId = state.tabId;
+    if (tabId) {
+      try {
+        const snapshot = await client.browser.snapshot({ tabId });
+        // 只有停在 1688 首页时才直接复用，商品页的登录态看不准。
+        if (isLoginHome(snapshot.url)) return snapshot;
+      } catch {}
+    }
+    const tab = await client.browser.open(LOGIN_HOME_URL);
+    state.tabId = tab.tabId;
+    try { await client.browser.waitFor({ tabId: tab.tabId, selector: 'body', timeoutMs: 8000 }); } catch {}
+    return client.browser.snapshot({ tabId: tab.tabId });
+  }
+
+  async function ensureLogin() {
+    const cached = state.login;
+    const ttl = cached?.status === 'signed-in' ? LOGIN_TTL_MS : LOGIN_UNKNOWN_TTL_MS;
+    if (cached && cached.status !== 'signed-out' && now() - cached.at < ttl) return cached.status;
+    let snapshot = null;
+    try { snapshot = await loginSnapshot(); } catch { snapshot = null; }
+    const status = detectLoginState(snapshot);
+    state.login = { status, at: now() };
+    if (status === 'signed-out') throw new Error(LOGIN_REQUIRED);
+    return status;
+  }
 
   async function persistDraft(draft) {
     state.drafts = upsertDraft(state.drafts, draft);
@@ -243,15 +283,20 @@ export function createController({ client, now = () => Date.now(), sleep = ms =>
 
   async function collect(link) {
     const url = sourceUrlOf(link);
+    await ensureLogin();
     const tab = await client.browser.open(url);
     state.tabId = tab.tabId;
     try { await client.browser.waitFor({ tabId: tab.tabId, selector: 'h1', timeoutMs: 15000 }); } catch {}
     const snapshot = await client.browser.snapshot({ tabId: tab.tabId });
     // 标签页地址是权威来源；快照没带地址时用它兜底，草稿才不会丢掉来源链接。
     const collected = parseProductSnapshot({ ...snapshot, url: snapshot.url || tab.url });
-    if (collected.needsHuman) throw new Error('页面需要人工处理：请在内嵌浏览器完成登录或验证，再重新采集。');
+    if (collected.needsHuman) {
+      state.login = null;
+      throw new Error('页面需要人工处理：请在内嵌浏览器完成登录或验证，再重新采集。');
+    }
     if (!collected.title || !collected.price) throw new Error('没有识别到商品标题或价格，请在页面加载完成后重试。');
     const draft = createDraft(collected, { now: now(), coefficient: state.settings.coefficient });
+    state.login = { status: 'signed-in', at: now() };
     return persistDraft({ ...draft, source: { ...draft.source, tabId: tab.tabId } });
   }
 

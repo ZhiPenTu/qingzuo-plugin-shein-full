@@ -67,7 +67,7 @@ test('1688 采集到希音提交：确认前零发品调用，签名与幂等键
     app = await _electron.launch({
       executablePath: electronBinary(root),
       args: [root, '--user-data-dir=' + path.join(temporary, 'profile'),
-        '--host-resolver-rules=MAP detail.1688.com 127.0.0.1:' + storefront.port + ', MAP ' + AUTHORIZE_HOST + ' 127.0.0.1:' + storefront.port + ', MAP ' + CALLBACK_HOST + ' 127.0.0.1:' + storefront.port,
+        '--host-resolver-rules=MAP detail.1688.com 127.0.0.1:' + storefront.port + ', MAP www.1688.com 127.0.0.1:' + storefront.port + ', MAP ' + AUTHORIZE_HOST + ' 127.0.0.1:' + storefront.port + ', MAP ' + CALLBACK_HOST + ' 127.0.0.1:' + storefront.port,
         '--ignore-certificate-errors'],
       cwd: temporary, env, timeout: 120000
     });

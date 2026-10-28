@@ -1,10 +1,9 @@
 import { createPluginClient } from './sdk.mjs';
 import { createController } from './controller.mjs';
-import { STATUS_LABEL, blockingIssues, validateDraft } from './store.mjs';
+import { STATUS_LABEL, blockingIssues, skuSupplyPriceOf, validateDraft } from './store.mjs';
 import { ROLE_LABEL, fitForShein, heroImage, readImageSize, submitImage, translatedVersion, usesTranslation, validateImage } from './images.mjs';
 import { mergeTranslationResults, translationFailures, translationRecord, translationTargets, withSourceVersion } from './image-translate.mjs';
 import { IMAGE_TEXT_PROMPT } from './translate.mjs';
-import { supplyPrice } from './pricing.mjs';
 import { SECRET_CREDENTIAL } from './shein-client.mjs';
 import { callbackUrlOf } from './shein-auth.mjs';
 import { findCategoryPath } from './category.mjs';
@@ -99,7 +98,7 @@ function formatSize(bytes) {
 }
 
 function safeSupply(sku, form) {
-  try { return supplyPrice(sku?.price ?? form.source?.price ?? 0, form.product?.coefficient); } catch { return 0; }
+  try { return skuSupplyPriceOf(sku, form); } catch { return 0; }
 }
 
 function money(value, currency = 'USD') {
@@ -279,7 +278,6 @@ function renderForm(form) {
   $('category-confirmed').checked = Boolean(form.product?.category?.confirmed);
   renderCategoryPicker(form);
   $('coefficient').value = form.product?.coefficient ?? 1.35;
-  $('coefficient-hint').textContent = form.source?.price ? '1688 ¥' + Number(form.source.price).toFixed(2) + ' 起算' : '';
   renderAttributes(form);
   renderSkus(form);
   renderSuggestions();
@@ -437,12 +435,47 @@ function renderAttributes(form) {
   });
 }
 
+function formatDecimal(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number.toFixed(2) : '';
+}
+
+function sourcePriceLabel(form) {
+  const prices = (form.product?.skus ?? [])
+    .map(sku => Number(sku.price))
+    .filter(value => Number.isFinite(value) && value > 0);
+  if (!prices.length) {
+    const price = Number(form.source?.price);
+    return price > 0 ? '1688 ¥' + price.toFixed(2) + ' 起算' : '';
+  }
+  const min = Math.min(...prices);
+  const max = Math.max(...prices);
+  return min === max ? '1688 ¥' + min.toFixed(2) + ' 起算' : '1688 ¥' + min.toFixed(2) + '–' + max.toFixed(2);
+}
+
+function renderPriceHint(form) {
+  const manual = (form.product?.skus ?? []).filter(sku => Number(sku.supplyPriceOverride) > 0).length;
+  $('coefficient-hint').textContent = [sourcePriceLabel(form), manual ? manual + ' 个供货价已手动调整' : ''].filter(Boolean).join(' · ');
+}
+
+function skuAttributeSelect(values, current, placeholder, onChange) {
+  if (!values.length) return el('span', { class: 'hint', text: '读取模板后可选' });
+  const select = el('select', {});
+  select.append(el('option', { value: '', text: placeholder }));
+  for (const value of values) select.append(el('option', { value: value.id, text: value.label || value.id }));
+  select.value = current ?? '';
+  select.addEventListener('change', () => onChange(select.value));
+  return select;
+}
+
 function renderSkus(form) {
   const body = $('sku-body');
   body.replaceChildren();
-  const colorId = String(form.product?.category?.colorAttributeId ?? '');
-  const colorAttribute = (form.product?.attributes ?? []).find(attribute => String(attribute.attributeId) === colorId) ?? null;
-  const values = colorAttribute?.values ?? [];
+  const category = form.product?.category ?? {};
+  const attributes = form.product?.attributes ?? [];
+  const valuesOf = id => attributes.find(attribute => String(attribute.attributeId) === String(id ?? ''))?.values ?? [];
+  const colorValues = valuesOf(category.colorAttributeId);
+  const sizeValues = valuesOf(category.sizeAttributeId);
   const skus = form.product?.skus ?? [];
   skus.forEach((sku, index) => {
     const colorEn = el('input', { type: 'text', value: sku.colorEn ?? '', placeholder: '英文颜色' });
@@ -451,23 +484,43 @@ function renderSkus(form) {
       markDirty();
     });
 
-    let colorValueNode;
-    if (values.length) {
-      const select = el('select', {});
-      select.append(el('option', { value: '', text: '选择颜色值' }));
-      for (const value of values) select.append(el('option', { value: value.id, text: value.label || value.id }));
-      select.value = sku.colorAttributeValueId ?? '';
-      select.addEventListener('change', () => {
-        state.form.product.skus[index].colorAttributeValueId = select.value;
-        markDirty();
-      });
-      colorValueNode = select;
-    } else {
-      colorValueNode = el('span', { class: 'hint', text: '读取模板后可选' });
-    }
+    const colorValue = skuAttributeSelect(colorValues, sku.colorAttributeValueId, '选择颜色值', value => {
+      state.form.product.skus[index].colorAttributeValueId = value;
+      markDirty();
+    });
+    const sizeValue = skuAttributeSelect(sizeValues, sku.sizeAttributeValueId, '选择尺码值', value => {
+      state.form.product.skus[index].sizeAttributeValueId = value;
+      markDirty();
+    });
 
-    const supplyCell = el('td', { class: 'supply', text: money(safeSupply(sku, form), form.product?.currency), 'data-index': String(index) });
-    const skuInput = el('input', { type: 'text', value: sku.supplierSku ?? '' });
+    const priceInput = el('input', { type: 'number', class: 'money', min: '0.01', step: '0.01', value: formatDecimal(sku.price) });
+    priceInput.addEventListener('input', () => {
+      const value = Number(priceInput.value);
+      const item = state.form.product.skus[index];
+      item.price = Number.isFinite(value) && value > 0 ? value : 0;
+      if (!(Number(item.supplyPriceOverride) > 0)) {
+        const supply = body.querySelector('input.supply[data-index="' + index + '"]');
+        if (supply) supply.value = formatDecimal(safeSupply(item, state.form));
+      }
+      renderPriceHint(state.form);
+      markDirty();
+    });
+
+    const supplyInput = el('input', {
+      type: 'number', class: 'money supply', min: '0.01', step: '0.01', 'data-index': String(index),
+      value: formatDecimal(safeSupply(sku, form)), title: '留空按加价系数计算'
+    });
+    supplyInput.addEventListener('input', () => {
+      const raw = supplyInput.value.trim();
+      const value = Number(raw);
+      const item = state.form.product.skus[index];
+      item.supplyPriceOverride = raw && Number.isFinite(value) && value > 0 ? Math.round(value * 100) / 100 : null;
+      if (!raw) supplyInput.value = formatDecimal(safeSupply(item, state.form));
+      renderPriceHint(state.form);
+      markDirty();
+    });
+
+    const skuInput = el('input', { type: 'text', value: sku.supplierSku ?? '', placeholder: sku.code || '供货 SKU' });
     skuInput.addEventListener('input', () => {
       state.form.product.skus[index].supplierSku = skuInput.value;
       markDirty();
@@ -476,15 +529,18 @@ function renderSkus(form) {
 
     body.append(el('tr', {},
       el('td', { class: 'muted', text: sku.color || '默认' }),
+      el('td', { class: 'muted', text: sku.spec || '—' }),
       el('td', {}, colorEn),
-      el('td', {}, colorValueNode),
-      el('td', { class: 'muted', text: '¥' + (Number(sku.price) || 0).toFixed(2) }),
-      supplyCell,
+      el('td', {}, colorValue),
+      el('td', {}, sizeValue),
+      el('td', {}, priceInput),
+      el('td', {}, supplyInput),
       el('td', {}, skuInput),
       el('td', { class: 'muted', text: stock })
     ));
   });
-  if (!skus.length) body.append(el('tr', {}, el('td', { colspan: '7', class: 'hint', text: '没有识别到 SKU。' })));
+  if (!skus.length) body.append(el('tr', {}, el('td', { colspan: '9', class: 'hint', text: '没有识别到 SKU。' })));
+  renderPriceHint(form);
 }
 
 function imageUrlOf(image) {
@@ -742,11 +798,12 @@ function applySuggestion(index) {
 }
 
 function updateSupplyPrices(form) {
-  for (const cell of $('sku-body').querySelectorAll('td.supply')) {
-    const sku = form.product.skus[Number(cell.dataset.index)];
-    cell.textContent = money(safeSupply(sku, form), form.product?.currency);
+  for (const input of $('sku-body').querySelectorAll('input.supply')) {
+    const sku = form.product.skus[Number(input.dataset.index)];
+    if (Number(sku?.supplyPriceOverride) > 0) continue;
+    input.value = formatDecimal(safeSupply(sku, form));
   }
-  $('coefficient-hint').textContent = form.source?.price ? '1688 ¥' + Number(form.source.price).toFixed(2) + ' 起算' : '';
+  renderPriceHint(form);
 }
 
 function submitReason(draft, errors) {
@@ -763,7 +820,7 @@ function updateGate() {
   const form = state.form;
   const busy = state.busy;
   $('collect').disabled = busy || !$('source-url').value.trim();
-  for (const id of ['translate', 'translate-zh-title', 'save', 'prepare-images', 'load-template', 'refresh-categories', 'suggest-category', 'delete-draft', 'translate-images']) {
+  for (const id of ['translate', 'translate-zh-title', 'save', 'prepare-images', 'load-template', 'refresh-categories', 'suggest-category', 'delete-draft', 'translate-images', 'recalc-prices']) {
     const node = $(id);
     if (node) node.disabled = busy || !draft;
   }
@@ -1704,7 +1761,12 @@ function bindEvents() {
   $('coefficient').addEventListener('input', event => {
     state.form.product.coefficient = Number(event.target.value);
     updateSupplyPrices(state.form);
-    renderSkus(state.form);
+    markDirty();
+  });
+  $('recalc-prices').addEventListener('click', () => {
+    if (!state.form) return;
+    for (const sku of state.form.product.skus ?? []) sku.supplyPriceOverride = null;
+    updateSupplyPrices(state.form);
     markDirty();
   });
 

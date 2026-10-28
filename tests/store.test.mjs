@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { parseProductSnapshot } from '../ui/collect.mjs';
 import {
   applyDocumentState, applyTranslation, blockingIssues, canTransition, createDraft, markSubmitted,
-  setImages, submissionKey, transition, upsertDraft, validateDraft
+  setImages, skuSupplyPriceOf, submissionKey, transition, upsertDraft, validateDraft
 } from '../ui/store.mjs';
 
 const fixture = JSON.parse(await readFile(new URL('./fixtures/1688-detail-snapshot.json', import.meta.url), 'utf8'));
@@ -41,6 +41,31 @@ test('新草稿从 1688 采集结果生成，并自动分配供货 SKU', () => {
   assert.deepEqual(draft.product.skus.map(sku => sku.supplierSku), ['DTEST-01', 'DTEST-02']);
   assert.equal(draft.product.coefficient, 1.35);
   assert.equal(draft.history.at(-1).status, 'collected');
+});
+
+test('手动改过的供货价优先，未改的仍按加价系数换算', () => {
+  const draft = collectedDraft();
+  draft.product.skus[0].supplyPriceOverride = 20;
+  assert.equal(skuSupplyPriceOf(draft.product.skus[0], draft), 20);
+  assert.equal(skuSupplyPriceOf(draft.product.skus[1], draft), 17.55);
+  draft.product.skus[0].supplyPriceOverride = null;
+  assert.equal(skuSupplyPriceOf(draft.product.skus[0], draft), 16.88);
+});
+
+test('手动供货价超出范围时按 SKU 逐条拦截', () => {
+  const draft = reviewReadyDraft();
+  assert.deepEqual(blockingIssues(draft), []);
+  draft.product.skus[0].supplyPriceOverride = 20000;
+  assert.ok(blockingIssues(draft).some(issue => /SKU「米白」供货价高于/.test(issue.message)));
+});
+
+test('类目模板带尺码时，有规格的 SKU 必须匹配尺码值', () => {
+  const draft = reviewReadyDraft();
+  draft.product.category.sizeAttributeId = '31';
+  draft.product.skus[0].spec = 'XL';
+  assert.ok(blockingIssues(draft).some(issue => /规格「XL」未匹配希音尺码值/.test(issue.message)));
+  draft.product.skus[0].sizeAttributeValueId = '3101';
+  assert.deepEqual(blockingIssues(draft), []);
 });
 
 test('状态机只允许相邻推进，未审核不能直接提交', () => {

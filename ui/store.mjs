@@ -35,10 +35,15 @@ export function createDraft(collected, { id, now, coefficient = DEFAULT_COEFFICI
   const price = Number(collected.price) || 0;
   const skus = (collected.skus?.length ? collected.skus : [{ color: '', price, stock: null }]).map((sku, index) => ({
     color: sku.color ?? '',
+    spec: sku.spec ?? '',
+    code: sku.code ?? '',
     colorEn: '',
     colorAttributeValueId: '',
+    sizeAttributeValueId: '',
     price: Number(sku.price) || price,
     stock: sku.stock ?? null,
+    // 供货价默认按系数换算；运营手动改过之后固定为覆盖值，系数变化不再覆盖。
+    supplyPriceOverride: null,
     supplierSku: draftId.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10) + '-' + String(index + 1).padStart(2, '0')
   }));
   return {
@@ -76,6 +81,7 @@ export function createDraft(collected, { id, now, coefficient = DEFAULT_COEFFICI
         sheinProductTypeId: '',
         sheinCategoryName: '',
         colorAttributeId: '',
+        sizeAttributeId: '',
         confirmed: false
       },
       images: [],
@@ -105,6 +111,8 @@ export function supplyPriceOf(draft) {
 }
 
 export function skuSupplyPriceOf(sku, draft) {
+  const manual = Number(sku?.supplyPriceOverride);
+  if (Number.isFinite(manual) && manual > 0) return Math.round(manual * 100) / 100;
   return supplyPrice(sku?.price ?? draft.source?.price ?? 0, coefficientOf(draft));
 }
 
@@ -180,10 +188,31 @@ export function validateDraft(draft) {
 
   const coefficient = coefficientOf(draft);
   if (!Number.isFinite(coefficient) || coefficient < 1.05 || coefficient > 3) push('price', '加价系数需在 1.05 到 3 之间');
-  let price = 0;
-  try { price = supplyPrice(draft.source?.price ?? 0, coefficient); }
-  catch { push('price', '1688 单价无效，请重新采集'); }
-  for (const message of priceIssues(price)) push('price', message);
+  for (const sku of skus) {
+    const label = sku.color || sku.spec || '默认';
+    try {
+      const price = skuSupplyPriceOf(sku, draft);
+      for (const message of priceIssues(price)) push('price', 'SKU「' + label + '」' + message);
+    } catch {
+      push('price', 'SKU「' + label + '」1688 单价无效，请重新采集或手动填写');
+    }
+  }
+  const sizeAttributeId = text(draft.product?.category?.sizeAttributeId);
+  if (sizeAttributeId) {
+    for (const sku of skus) {
+      if (text(sku.spec) && !text(sku.sizeAttributeValueId)) push('skus', '规格「' + sku.spec + '」未匹配希音尺码值');
+    }
+  }
+  const colors = new Map();
+  for (const sku of skus) {
+    const key = text(sku.colorEn || sku.color);
+    if (!key) continue;
+    colors.set(key, (colors.get(key) ?? 0) + 1);
+  }
+  if (!sizeAttributeId) {
+    const repeated = [...colors.entries()].find(([, count]) => count > 1);
+    if (repeated) push('skus', '颜色「' + repeated[0] + '」下有多个 SKU，请读取希音尺码属性并逐个匹配', 'warning');
+  }
   const spread = priceSpreadWarning(skus);
   if (spread) push('skus', spread, 'warning');
 

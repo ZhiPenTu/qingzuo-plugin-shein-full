@@ -8,6 +8,24 @@ import { createFakeClient, ok, businessError } from './support/fake-host.mjs';
 const snapshot = JSON.parse(await readFile(new URL('./fixtures/1688-detail-snapshot.json', import.meta.url), 'utf8'));
 const SOURCE = 'https://detail.1688.com/offer/826500000001.html';
 
+const HOME_SIGNED_IN = {
+  url: 'https://www.1688.com/',
+  title: '阿里巴巴 1688.com',
+  nodes: [
+    { ref: 'm1', role: 'link', name: '我的阿里', value: '', visible: true, rect: { x: 900, y: 10, width: 60, height: 20 } },
+    { ref: 'm2', role: 'link', name: '消息', value: '', visible: true, rect: { x: 970, y: 10, width: 40, height: 20 } }
+  ]
+};
+
+const HOME_SIGNED_OUT = {
+  url: 'https://www.1688.com/',
+  title: '阿里巴巴 1688.com',
+  nodes: [
+    { ref: 'm1', role: 'link', name: '请登录', value: '', visible: true, rect: { x: 900, y: 10, width: 60, height: 20 } },
+    { ref: 'm2', role: 'link', name: '免费注册', value: '', visible: true, rect: { x: 970, y: 10, width: 60, height: 20 } }
+  ]
+};
+
 const APP_ID = '10ADAABD6E000B247A428884951B4';
 const APP_SECRET = '50CBFA17A9C3423EB14608B481DF364F';
 
@@ -40,7 +58,7 @@ function networkPaths(calls) {
 }
 
 async function readyController(overrides = {}) {
-  const fake = createFakeClient({ snapshot, respond: routeOverrides(overrides) });
+  const fake = createFakeClient({ snapshot, snapshots: { 'https://www.1688.com/': HOME_SIGNED_IN }, respond: routeOverrides(overrides) });
   const controller = createController({ client: fake.client, now: () => 1760000000000 });
   await controller.load();
   await controller.saveSettings({ openKeyId: 'KEYID' });
@@ -77,6 +95,28 @@ test('采集链接后生成草稿，并把标签页归属记在草稿上', async
   assert.match(draft.source.tabId, /^tab-/);
   assert.ok(calls.browser.some(([name]) => name === 'snapshot'));
   await assert.rejects(() => controller.collect('https://www.taobao.com/item/1'), /1688/);
+});
+
+test('未登录 1688 时先停在登录检测，不打开商品页', async () => {
+  const fake = createFakeClient({ snapshot, snapshots: { 'https://www.1688.com/': HOME_SIGNED_OUT }, respond: routeOverrides() });
+  const controller = createController({ client: fake.client, now: () => 1760000000000 });
+  await controller.load();
+  await assert.rejects(() => controller.collect(SOURCE), /登录 1688/);
+  const opens = fake.calls.browser.filter(([name]) => name === 'open').map(([, url]) => url);
+  assert.deepEqual(opens, ['https://www.1688.com/']);
+  assert.equal(fake.calls.browser.some(([name, url]) => name === 'open' && url === SOURCE), false);
+});
+
+test('确认登录后在有效期内复用登录态，不再重复打开 1688 首页', async () => {
+  let clock = 1760000000000;
+  const fake = createFakeClient({ snapshot, snapshots: { 'https://www.1688.com/': HOME_SIGNED_IN }, respond: routeOverrides() });
+  const controller = createController({ client: fake.client, now: () => clock });
+  await controller.load();
+  await controller.collect(SOURCE);
+  clock += 60 * 1000;
+  await controller.collect(SOURCE);
+  const homes = fake.calls.browser.filter(([name, url]) => name === 'open' && url === 'https://www.1688.com/');
+  assert.equal(homes.length, 1);
 });
 
 test('1688 原文可编辑，标题翻译只写英文标题并保存到草稿', async () => {
@@ -237,11 +277,12 @@ test('图片转存只用草稿自己的标签页，不会串到其它草稿', as
   storage.set('drafts', stored);
   await controller.load();
   const before = calls.browser.filter(([name]) => name === 'open').length;
+  const beforeTabs = tabs.length;
   await controller.prepareImages(second.id);
   const opened = calls.browser.filter(([name]) => name === 'open');
   assert.equal(opened.length, before + 1);
   assert.equal(opened.at(-1)[1], 'https://detail.1688.com/offer/826500000002.html');
-  assert.equal(tabs.length, 3);
+  assert.equal(tabs.length, beforeTabs + 1);
   assert.equal(controller.find(second.id).source.tabId, tabs.at(-1).id);
 });
 

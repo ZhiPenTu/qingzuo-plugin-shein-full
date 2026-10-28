@@ -2,6 +2,16 @@ import { createHash, createHmac } from 'node:crypto';
 
 export const PNG_1X1 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
+// 默认的 1688 首页快照按已登录提供；需要在测试里验证未登录时用 snapshots 覆盖。
+const SIGNED_IN_HOME = {
+  url: 'https://www.1688.com/',
+  title: '阿里巴巴 1688.com',
+  nodes: [
+    { ref: 'home-member', role: 'link', name: '我的阿里', value: '', visible: true, rect: { x: 900, y: 10, width: 60, height: 20 } },
+    { ref: 'home-message', role: 'link', name: '消息', value: '', visible: true, rect: { x: 970, y: 10, width: 40, height: 20 } }
+  ]
+};
+
 export function encodeEnvelope(payload) {
   return Buffer.from(JSON.stringify(payload), 'utf8').toString('base64');
 }
@@ -16,7 +26,7 @@ export function businessError(code, msg) {
 
 // 最小可用的插件宿主替身：存储、凭据、浏览器和网络都记录调用，方便断言
 // “没点确认就绝不发品”这类安全约定。
-export function createFakeClient({ snapshot, resource = { data: PNG_1X1, mime: 'image/png', name: 'main.png' }, respond, translation, complete, imageModels, batch } = {}) {
+export function createFakeClient({ snapshot, snapshots = {}, resource = { data: PNG_1X1, mime: 'image/png', name: 'main.png' }, respond, translation, complete, imageModels, batch } = {}) {
   const storage = new Map();
   const files = new Map();
   const secrets = new Map();
@@ -80,9 +90,13 @@ export function createFakeClient({ snapshot, resource = { data: PNG_1X1, mime: '
       },
       async snapshot(options = {}) {
         calls.browser.push(['snapshot', options.tabId]);
-        if (!snapshot) throw new Error('没有准备页面快照。');
         const tab = tabs.find(item => item.id === options.tabId) ?? tabs.at(-1) ?? { id: options.tabId, url: snapshot.url };
-        return { tabId: tab.id, url: tab.url || snapshot.url, title: snapshot.title ?? tab.title, nodes: snapshot.nodes ?? [], truncated: Boolean(snapshot.truncated) };
+        const address = String(tab.url || '');
+        const matched = Object.entries(snapshots).find(([prefix]) => address.startsWith(prefix))?.[1]
+          ?? (address === SIGNED_IN_HOME.url ? SIGNED_IN_HOME : undefined);
+        const source = matched ?? snapshot;
+        if (!source) throw new Error('没有准备页面快照。');
+        return { tabId: tab.id, url: tab.url || source.url, title: source.title ?? tab.title, nodes: source.nodes ?? [], truncated: Boolean(source.truncated) };
       },
       async waitFor(options = {}) { calls.browser.push(['waitFor', options.tabId]); return { tabId: options.tabId, url: '', ok: true, elapsed: 0 }; },
       async act(options) { calls.browser.push(['act', options.action, options.ref]); return { tabId: options.tabId, url: '', action: options.action, ok: true }; },

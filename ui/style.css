@@ -198,6 +198,8 @@ th, td { padding: 8px 10px; text-align: left; white-space: nowrap; }
 th { color: var(--muted); background: #f7f9f7; font-weight: 600; }
 tbody tr + tr td { border-top: 1px solid var(--border); }
 td input { min-width: 96px; padding: 5px 7px; font-size: 12px; }
+td input.money { min-width: 82px; width: 82px; text-align: right; font-variant-numeric: tabular-nums; }
+td input.supply { color: var(--brand); font-weight: 600; }
 td.supply { color: var(--brand); font-weight: 600; }
 
 /* ---------- Image workspace ---------- */

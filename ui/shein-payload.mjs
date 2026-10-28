@@ -43,6 +43,7 @@ export function buildPublishPayload(draft, { site = 'shein', categoryId, product
     image_url: image.uploadedUrl
   }));
   const colorAttributeId = Number(category.colorAttributeId);
+  const sizeAttributeId = Number(category.sizeAttributeId);
   const skcs = groupSkcs(draft);
   if (!skcs.length) throw new Error('没有可提交的 SKU。');
 
@@ -58,15 +59,22 @@ export function buildPublishPayload(draft, { site = 'shein', categoryId, product
         ? { sale_attribute: { attribute_id: colorAttributeId, attribute_value_id: Number(group.skus[0].colorAttributeValueId) } }
         : {}),
       image_info: { image_info_list: imageInfoList },
-      sku_list: group.skus.map(sku => ({
-        supplier_sku: String(sku.supplierSku),
-        mall_state: 1,
-        stop_purchase: 1,
-        supplier_price: skuSupplyPriceOf(sku, draft),
-        ...(Number.isInteger(colorAttributeId) && colorAttributeId > 0
-          ? { sale_attribute_list: [{ attribute_id: colorAttributeId, attribute_value_id: Number(sku.colorAttributeValueId) }] }
-          : {})
-      }))
+      sku_list: group.skus.map(sku => {
+        const saleAttributes = [];
+        if (Number.isInteger(colorAttributeId) && colorAttributeId > 0) {
+          saleAttributes.push({ attribute_id: colorAttributeId, attribute_value_id: Number(sku.colorAttributeValueId) });
+        }
+        if (Number.isInteger(sizeAttributeId) && sizeAttributeId > 0 && Number(sku.sizeAttributeValueId) > 0) {
+          saleAttributes.push({ attribute_id: sizeAttributeId, attribute_value_id: Number(sku.sizeAttributeValueId) });
+        }
+        return {
+          supplier_sku: String(sku.supplierSku),
+          mall_state: 1,
+          stop_purchase: 1,
+          supplier_price: skuSupplyPriceOf(sku, draft),
+          ...(saleAttributes.length ? { sale_attribute_list: saleAttributes } : {})
+        };
+      })
     };
   });
 
