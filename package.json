@@ -1,6 +1,6 @@
 {
   "name": "@commerce/plugin-shein-full",
-  "version": "0.4.4",
+  "version": "0.4.5",
   "private": true,
   "type": "module",
   "commerce": {
@@ -11,7 +11,7 @@
     "category": "电商工具",
     "api": "^1.5.0",
     "ui": "ui/index.html",
-    "releaseNotes": "APP_SecretKey 与店铺 secretKey 输入框支持通过眼睛图标切换显示和隐藏。",
+    "releaseNotes": "重新设计全托管铺货工作台，减少嵌套卡片与冗余留白，收紧导航、草稿、审核和图片编辑界面。",
     "permissions": {
       "files": true,
       "storage": true,
