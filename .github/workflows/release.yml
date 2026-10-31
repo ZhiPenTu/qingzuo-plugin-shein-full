@@ -86,7 +86,7 @@ jobs:
       - name: Publish independently validated artifacts
         run: |
           node --input-type=module -e "import pkg from './package.json' with {type:'json'};if(process.env.GITHUB_REF_NAME!=='v'+pkg.version)throw new Error('Tag mismatch');"
-          gh release create "$GITHUB_REF_NAME" release/*.ecplugin release/catalog-*.json --verify-tag --title "$GITHUB_REF_NAME" --notes "Independent plugin release, validated in the pinned Qingzuo OS sandbox. Market signing and review happen separately."
+          gh release create "$GITHUB_REF_NAME" release/*.ecplugin release/catalog-*.json --verify-tag --title "$GITHUB_REF_NAME" --notes "重新设计全托管铺货工作台，减少嵌套卡片与冗余留白，收紧导航、草稿、审核和图片编辑界面。"
       - name: Notify market when restricted dispatch credentials are configured
         env:
           GH_TOKEN: ${{ secrets.MARKET_TRIGGER_TOKEN }}

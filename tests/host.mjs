@@ -1,6 +1,6 @@
 import { expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
-import { launchPluginTestHost } from '@commerce/plugin-sdk/testing';
+import { launchPluginTestHost } from './launch-host.mjs';
 
 const pkg = JSON.parse(await readFile('package.json', 'utf8'));
 const platform = process.platform + '-' + process.arch;
@@ -11,7 +11,7 @@ const host = await launchPluginTestHost({
   pluginId: pkg.commerce.id
 });
 try {
-  await expect(host.plugin.locator('h1')).toHaveText('1688 选品 · 希音草稿');
+  await expect(host.plugin.locator('h1')).toHaveText('希音全托管铺货');
   await expect(host.plugin.locator('#gate-note')).toHaveText('未确认不会发品');
   await expect(host.plugin.locator('#collect')).toBeEnabled();
   await expect(host.plugin.locator('#submit-dialog')).toBeHidden();
