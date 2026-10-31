@@ -1,6 +1,6 @@
 {
   "name": "@commerce/plugin-shein-full",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "private": true,
   "type": "module",
   "commerce": {
@@ -11,7 +11,7 @@
     "category": "电商工具",
     "api": "^1.5.0",
     "ui": "ui/index.html",
-    "releaseNotes": "界面配色统一为轻作底座语义色，支持跟随系统的浅色与深色模式。",
+    "releaseNotes": "APP_SecretKey 与店铺 secretKey 输入框支持通过眼睛图标切换显示和隐藏。",
     "permissions": {
       "files": true,
       "storage": true,

@@ -90,7 +90,7 @@ test('1688 采集到希音提交：确认前零发品调用，签名与幂等键
     await shell.getByRole('button', { name: '工具中心', exact: true }).click();
     await shell.locator('[data-slot="card"]')
       .filter({ has: shell.getByRole('heading', { name: pkg.commerce.title, exact: true }) })
-      .getByRole('button', { name: '打开工具', exact: true }).click();
+      .getByRole('button', { name: /^打开(?:工具)?$/ }).click();
     const prefix = 'commerce-plugin://' + pkg.commerce.id + '/';
     await expect.poll(() => app.context().pages().some(candidate => candidate.url().startsWith(prefix)), { timeout: 120000 }).toBe(true);
     const plugin = app.context().pages().find(candidate => candidate.url().startsWith(prefix));
