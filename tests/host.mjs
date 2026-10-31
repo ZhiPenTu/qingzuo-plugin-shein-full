@@ -20,12 +20,23 @@ try {
   // 主流程是应用授权：APP_ID / APP_SecretKey 与插件生成的回调地址就在设置首屏。
   await expect(host.plugin.locator('#app-id')).toBeVisible();
   await expect(host.plugin.locator('#app-secret')).toHaveAttribute('type', 'password');
+  await host.plugin.locator('#app-secret').fill('APP-SECRET');
+  await host.plugin.locator('#app-secret-toggle').click();
+  await expect(host.plugin.locator('#app-secret')).toHaveAttribute('type', 'text');
+  await expect(host.plugin.locator('#app-secret-toggle')).toHaveAttribute('aria-pressed', 'true');
+  await host.plugin.locator('#app-secret-toggle').click();
+  await expect(host.plugin.locator('#app-secret')).toHaveAttribute('type', 'password');
   await expect(host.plugin.locator('#callback-url')).toBeVisible();
   await expect(host.plugin.locator('#authorize')).toBeEnabled();
   await expect(host.plugin.locator('#base-url')).toContainText('测试环境');
   // 直接填店铺凭据是兜底入口，展开后才出现。
   await host.plugin.locator('.credential-fallback > summary').click();
   await expect(host.plugin.locator('#open-key')).toBeVisible();
+  await expect(host.plugin.locator('#secret-key')).toHaveAttribute('type', 'password');
+  await host.plugin.locator('#secret-key').fill('STORE-SECRET');
+  await host.plugin.locator('#secret-key-toggle').click();
+  await expect(host.plugin.locator('#secret-key')).toHaveAttribute('type', 'text');
+  await host.plugin.locator('#secret-key-toggle').click();
   await expect(host.plugin.locator('#secret-key')).toHaveAttribute('type', 'password');
   console.log('希音全托管插件在真实宿主中加载成功，设置在启用前保持静默。');
 } finally {

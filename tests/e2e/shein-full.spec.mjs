@@ -99,6 +99,11 @@ test('1688 采集到希音提交：确认前零发品调用，签名与幂等键
     await plugin.locator('#base-url').selectOption('https://openapi-test01.sheincorp.cn');
     await plugin.locator('#app-id').fill(APP_ID);
     await plugin.locator('#app-secret').fill(APP_SECRET);
+    await plugin.locator('#app-secret-toggle').click();
+    await expect(plugin.locator('#app-secret')).toHaveAttribute('type', 'text');
+    await expect(plugin.locator('#app-secret')).toHaveValue(APP_SECRET);
+    await plugin.locator('#app-secret-toggle').click();
+    await expect(plugin.locator('#app-secret')).toHaveAttribute('type', 'password');
     await expect(plugin.locator('#model option[value="mock-translator"]')).toHaveCount(1);
     await plugin.locator('#model').selectOption('mock-translator');
     await plugin.locator('#save-settings').click();

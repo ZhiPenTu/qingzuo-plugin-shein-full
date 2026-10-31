@@ -264,7 +264,14 @@ await shot(await open(900, 900, async page => {
 }), '/tmp/preview_900_title_dialog.png');
 await shot(await open(1600, 1000, async page => {
   await page.click('#toggle-settings');
+  await page.fill('#app-secret', 'PREVIEW-SECRET');
+  await page.click('#app-secret-toggle');
+  if ((await page.locator('#app-secret').getAttribute('type')) !== 'text') throw new Error('密钥显隐切换未生效');
+  if ((await page.locator('#app-secret-toggle').getAttribute('aria-pressed')) !== 'true') throw new Error('密钥显隐按钮状态未更新');
+  await page.click('#app-secret-toggle');
+  if ((await page.locator('#app-secret').getAttribute('type')) !== 'password') throw new Error('密钥未能恢复隐藏');
   await page.waitForTimeout(300);
+  await auditLayout(page, '设置');
 }), '/tmp/preview_1600_settings.png');
 
 await shot(await open(1280, 720, async page => {

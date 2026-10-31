@@ -121,6 +121,19 @@ select { cursor: pointer; }
 
 .row { display: flex; align-items: center; gap: 9px; }
 .row > input { flex: 1 1 auto; min-width: 0; }
+.secret-input { position: relative; display: flex; flex: 1 1 auto; min-width: 0; }
+.secret-input > input { padding-right: 42px; }
+.secret-toggle {
+  position: absolute; top: 50%; right: 4px;
+  display: inline-grid; place-items: center; width: 30px; height: 30px;
+  border: 1px solid transparent; border-radius: 6px; padding: 0;
+  color: var(--muted); background: transparent; transform: translateY(-50%);
+}
+.secret-toggle:hover:enabled { border-color: transparent; color: var(--brand); background: var(--brand-soft); }
+.secret-toggle svg { width: 17px; height: 17px; pointer-events: none; }
+.secret-toggle .eye-closed { display: none; }
+.secret-toggle[aria-pressed="true"] .eye-open { display: none; }
+.secret-toggle[aria-pressed="true"] .eye-closed { display: block; }
 .check { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; white-space: nowrap; }
 .radio-row { display: flex; flex-wrap: wrap; gap: 14px; }
 

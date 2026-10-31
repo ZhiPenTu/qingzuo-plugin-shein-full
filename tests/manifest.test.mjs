@@ -52,3 +52,12 @@ test('插件界面只用 textContent 写文本，不注入 HTML', () => {
   assert.doesNotMatch(app, /innerHTML|insertAdjacentHTML|outerHTML|document\.write/);
   assert.match(markup, /<script type="module" src="\.\/app\.mjs">/);
 });
+
+test('密钥输入框带可切换显隐的图标按钮', () => {
+  for (const id of ['app-secret', 'secret-key']) {
+    assert.match(markup, new RegExp(`id="${id}" type="password"`));
+    assert.match(markup, new RegExp(`data-password-toggle="${id}"[^>]*aria-pressed="false"`));
+  }
+  assert.match(app, /function bindSecretToggles\(\)/);
+  assert.match(app, /input\.type = visible \? 'text' : 'password'/);
+});

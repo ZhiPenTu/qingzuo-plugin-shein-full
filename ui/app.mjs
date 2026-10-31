@@ -57,6 +57,33 @@ let appSecretValue = '';
 
 const clone = value => JSON.parse(JSON.stringify(value ?? null));
 
+function setSecretVisible(input, button, visible) {
+  if (!input || !button) return;
+  input.type = visible ? 'text' : 'password';
+  button.setAttribute('aria-pressed', String(visible));
+  const action = visible ? '隐藏' : '显示';
+  const label = action + (button.dataset.secretLabel || '密钥');
+  button.setAttribute('aria-label', label);
+  button.title = label;
+}
+
+function resetSecretVisibility(id) {
+  const input = $(id);
+  setSecretVisible(input, document.querySelector(`[data-password-toggle="${id}"]`), false);
+}
+
+function bindSecretToggles() {
+  for (const button of document.querySelectorAll('[data-password-toggle]')) {
+    const input = $(button.dataset.passwordToggle);
+    if (!input) continue;
+    setSecretVisible(input, button, false);
+    button.addEventListener('click', () => {
+      setSecretVisible(input, button, input.type === 'password');
+      input.focus({ preventScroll: true });
+    });
+  }
+}
+
 function el(tag, props = {}, ...children) {
   const node = document.createElement(tag);
   for (const [key, value] of Object.entries(props)) {
@@ -1638,6 +1665,7 @@ async function doAuthorize() {
     const started = await controller.startAuthorization({ appId, appSecretKey, baseUrl });
     appSecretValue = appSecretKey;
     $('app-secret').value = '';
+    resetSecretVisibility('app-secret');
     $('cancel-authorize').hidden = false;
     setStatus('shein-status', '请在希音授权页点击确认授权，完成后会自动连接。');
     const { tempToken } = await controller.awaitAuthorization({
@@ -1685,6 +1713,7 @@ async function doSaveSheinSecret() {
     state.credentialRevision += 1;
     await controller.setSecret(SECRET_CREDENTIAL, value);
     $('secret-key').value = '';
+    resetSecretVisibility('secret-key');
     setStatus('secret-status', '已保存。');
   }, 'secret-status');
   await renderCredentialStatus();
@@ -1731,6 +1760,9 @@ function bindEvents() {
       void loadModels();
       void loadImageModels();
       void renderCredentialStatus();
+    } else {
+      resetSecretVisibility('app-secret');
+      resetSecretVisibility('secret-key');
     }
   });
   $('save-settings').addEventListener('click', () => void doSaveSettings());
@@ -1833,6 +1865,7 @@ function bindEvents() {
 }
 
 controller.subscribe(() => render());
+bindSecretToggles();
 bindEvents();
 render();
 
