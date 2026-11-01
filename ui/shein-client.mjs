@@ -32,24 +32,87 @@ export function decodeBase64Utf8(data) {
 }
 
 export class SheinError extends Error {
-  constructor(message, code = '') {
+  constructor(message, code = '', traceId = '') {
     super(message);
     this.name = 'SheinError';
     this.code = String(code ?? '');
+    this.traceId = String(traceId ?? '');
   }
+}
+
+const SENSITIVE_FIELD = '(?:app[_-]?secret(?:[_-]?key)?|secret[_-]?key|open[_-]?key[_-]?id|temp[_-]?token|access[_-]?token|token|state|password|signature|authorization)';
+const URL_QUERY_PATTERN = /(https?:\/\/[^\s?#]+)\?[^#\s]*/gi;
+const URL_SECRET_PATTERN = new RegExp('([?&]' + SENSITIVE_FIELD + '=)[^&#\\s]*', 'gi');
+const FIELD_SECRET_PATTERN = new RegExp('\\b(' + SENSITIVE_FIELD + ')\\s*[:=]\\s*(?:"[^"]*"|\'[^\']*\'|[^\\s,;&]+)', 'gi');
+
+function cleanPlatformMessage(value) {
+  if (typeof value !== 'string' && typeof value !== 'number') return '';
+  const text = String(value)
+    .replace(/[\u0000-\u001f\u007f]+/g, ' ')
+    .replace(URL_QUERY_PATTERN, '$1?[已隐藏]')
+    .replace(URL_SECRET_PATTERN, '$1[已隐藏]')
+    .replace(FIELD_SECRET_PATTERN, '$1=[已隐藏]')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return text.slice(0, 240);
+}
+
+function cleanMetadata(value) {
+  if (typeof value !== 'string' && typeof value !== 'number') return '';
+  const text = String(value).trim();
+  return /^[A-Za-z0-9._:-]{1,80}$/.test(text) ? text : '';
+}
+
+function decodeEnvelopePayload(data) {
+  if (typeof data !== 'string' || !data.trim()) return null;
+  const raw = data.trim();
+  const candidates = [];
+  if (raw.startsWith('{') || raw.startsWith('[')) candidates.push(raw);
+  try { candidates.push(decodeBase64Utf8(raw.replace(/\s+/g, ''))); } catch {}
+  for (const candidate of candidates) {
+    try {
+      const payload = JSON.parse(candidate);
+      if (payload && typeof payload === 'object' && !Array.isArray(payload)) return payload;
+    } catch {}
+  }
+  return null;
+}
+
+function errorDetails(payload) {
+  const code = cleanMetadata(payload?.code);
+  const traceId = cleanMetadata(payload?.traceId);
+  return { code, traceId };
+}
+
+function errorMessage(payload, fallback) {
+  const reason = cleanPlatformMessage(payload?.msg ?? payload?.message);
+  const { traceId } = errorDetails(payload);
+  let message = reason && !/^(?:ok|success|成功)$/i.test(reason) ? reason : fallback;
+  if (!/[。.!?！？]$/.test(message)) message += '。';
+  if (traceId) message += '（追踪编号 ' + traceId + '）';
+  return message;
 }
 
 export function parseEnvelope(response) {
   if (!response || typeof response.status !== 'number') throw new SheinError('希音接口没有返回结果。');
-  if (response.status === 401 || response.status === 403) throw new SheinError('希音凭据无效或未授权，请在设置中重新连接。', String(response.status));
+  if (response.status === 401 || response.status === 403) {
+    const payload = decodeEnvelopePayload(response.data);
+    const reason = cleanPlatformMessage(payload?.msg ?? payload?.message);
+    const { code, traceId } = errorDetails(payload);
+    const reconnect = !/重新连接|重新授权/.test(reason) ? '请在设置中重新连接。' : '';
+    const message = errorMessage(payload, '希音凭据无效或未授权') + reconnect;
+    throw new SheinError(message, code || String(response.status), traceId);
+  }
   if (response.status === 429) throw new SheinError('希音接口请求过于频繁，请稍后手动重试。', '429');
   if (response.status >= 500) throw new SheinError('希音服务暂时不可用（' + response.status + '）。', String(response.status));
   if (response.status < 200 || response.status >= 300) throw new SheinError('希音接口调用失败（' + response.status + '）。', String(response.status));
-  let payload;
-  try { payload = JSON.parse(decodeBase64Utf8(response.data)); }
-  catch { throw new SheinError('希音接口返回了无法解析的内容。'); }
+  const payload = decodeEnvelopePayload(response.data);
+  if (!payload) throw new SheinError('希音接口返回了无法解析的内容。');
   const code = payload?.code;
-  if (code !== undefined && code !== null && String(code) !== '0') throw new SheinError(String(payload?.msg || payload?.message || '希音接口返回错误。'), String(code));
+  if (code !== undefined && code !== null && String(code) !== '0') {
+    const { traceId } = errorDetails(payload);
+    throw new SheinError(errorMessage(payload, '希音接口返回错误。'), String(code), traceId);
+  }
   return payload?.info !== undefined ? payload.info : payload?.data;
 }
 

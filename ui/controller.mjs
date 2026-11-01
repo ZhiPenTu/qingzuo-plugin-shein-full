@@ -28,6 +28,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   coefficient: 1.35,
   site: 'shein',
   baseUrl: SHEIN_BASE_URL,
+  credentialEnvironment: '',
   appId: '',
   openKeyId: ''
 });
@@ -53,11 +54,25 @@ export function sourceUrlOf(value) {
   return url.href;
 }
 
+function normalizeOrigin(value) {
+  const raw = String(value ?? '').trim();
+  if (raw === SHEIN_LEGACY_BASE_URL) return SHEIN_BASE_URL;
+  if (!/^https:\/\//.test(raw)) return '';
+  try { return new URL(raw).origin; } catch { return ''; }
+}
+
+function normalizeSheinBaseUrl(value) {
+  return normalizeOrigin(value) || SHEIN_BASE_URL;
+}
+
 function mergeSettings(value) {
   const settings = { ...DEFAULT_SETTINGS, ...(value && typeof value === 'object' ? value : {}) };
   settings.imagePrompt = typeof settings.imagePrompt === 'string' ? settings.imagePrompt.trim() : '';
   settings.coefficient = coefficientOf({ product: { coefficient: settings.coefficient } });
-  if (settings.baseUrl === SHEIN_LEGACY_BASE_URL || !/^https:\/\//.test(settings.baseUrl)) settings.baseUrl = SHEIN_BASE_URL;
+  settings.baseUrl = normalizeSheinBaseUrl(settings.baseUrl);
+  settings.credentialEnvironment = normalizeOrigin(settings.credentialEnvironment);
+  settings.appId = typeof settings.appId === 'string' ? settings.appId.trim() : '';
+  settings.openKeyId = typeof settings.openKeyId === 'string' ? settings.openKeyId.trim() : '';
   return settings;
 }
 
@@ -73,6 +88,30 @@ export function createController({ client, now = () => Date.now(), sleep = ms =>
   const state = { settings: { ...DEFAULT_SETTINGS }, drafts: [], tabId: null, loaded: false, categories: null, login: null };
   const listeners = new Set();
   const notify = () => { for (const listener of listeners) { try { listener(); } catch {} } };
+
+  async function clearCredentialPair() {
+    await Promise.all([
+      client.credentials.clear(APP_SECRET_CREDENTIAL),
+      client.credentials.clear(SECRET_CREDENTIAL)
+    ]);
+    state.categories = null;
+  }
+
+  // 店铺凭据与应用凭据必须属于同一套希音环境。环境变化时先清掉旧的一对，
+  // 避免把旧域名签发的密钥继续发给新域名。
+  async function replaceSettings(patch) {
+    const next = mergeSettings({ ...state.settings, ...patch });
+    if (next.baseUrl !== state.settings.baseUrl) {
+      await clearCredentialPair();
+      next.openKeyId = '';
+      next.credentialEnvironment = '';
+    }
+    state.settings = next;
+    state.categories = null;
+    await client.storage.set(SETTINGS_KEY, state.settings);
+    notify();
+    return state.settings;
+  }
 
   // 1688 未登录时商品页只给残缺数据（常常只剩一个默认 SKU），所以在打开商品链接之前
   // 先用当前标签页或 1688 首页确认登录态。已确认登录的会话缓存 10 分钟，避免每次采集都多开一页。
@@ -147,7 +186,10 @@ export function createController({ client, now = () => Date.now(), sleep = ms =>
 
   async function ensureCredentials() {
     const settings = state.settings;
-    if (!settings.openKeyId || !(await client.credentials.status(SECRET_CREDENTIAL))) throw new Error('请先在设置中连接希音店铺。');
+    const environmentMatches = settings.credentialEnvironment === settings.baseUrl;
+    if (!environmentMatches || !settings.openKeyId || !(await client.credentials.status(SECRET_CREDENTIAL))) {
+      throw new Error('请先在设置中连接希音店铺。');
+    }
     return createSheinClient({ client, openKeyId: settings.openKeyId, baseUrl: settings.baseUrl, now });
   }
 
@@ -172,26 +214,45 @@ export function createController({ client, now = () => Date.now(), sleep = ms =>
   }
 
   async function load() {
-    state.settings = mergeSettings(await client.storage.get(SETTINGS_KEY));
+    const stored = await client.storage.get(SETTINGS_KEY);
+    state.settings = mergeSettings(stored);
     const drafts = await client.storage.get(DRAFTS_KEY);
     state.drafts = Array.isArray(drafts) ? drafts.filter(item => item && typeof item.id === 'string') : [];
+    let migrated = Boolean(stored && typeof stored === 'object' && stored.baseUrl !== state.settings.baseUrl);
+    const marker = state.settings.credentialEnvironment;
+    let credentialsOutdated = Boolean(marker && marker !== state.settings.baseUrl)
+      || (stored && typeof stored === 'object' && stored.baseUrl === SHEIN_LEGACY_BASE_URL);
+    // v0.4.7 及更早版本没有记录凭据所属环境。升级后的一次性迁移宁可要求重新连接，
+    // 也不让旧环境密钥继续参与新环境签名。
+    if (!marker) {
+      const [appSecret, storeSecret] = await Promise.all([
+        client.credentials.status(APP_SECRET_CREDENTIAL),
+        client.credentials.status(SECRET_CREDENTIAL)
+      ]);
+      credentialsOutdated ||= Boolean(state.settings.openKeyId || appSecret || storeSecret);
+    }
+    if (credentialsOutdated) {
+      await clearCredentialPair();
+      state.settings.openKeyId = '';
+      state.settings.credentialEnvironment = '';
+      migrated = true;
+    }
+    if (migrated) await client.storage.set(SETTINGS_KEY, state.settings);
     state.loaded = true;
     notify();
     return state;
   }
 
   async function saveSettings(patch) {
-    state.settings = mergeSettings({ ...state.settings, ...patch });
-    state.categories = null;
-    await client.storage.set(SETTINGS_KEY, state.settings);
-    notify();
-    return state.settings;
+    return replaceSettings(patch);
   }
 
   async function setSecret(name, value) {
     if (name !== SECRET_CREDENTIAL) throw new Error('凭据名称无效。');
     if (typeof value !== 'string' || !value.trim()) throw new Error('请填写密钥。');
     await client.credentials.set(name, value.trim());
+    state.settings = mergeSettings({ ...state.settings, credentialEnvironment: state.settings.baseUrl });
+    await client.storage.set(SETTINGS_KEY, state.settings);
     notify();
   }
 
@@ -214,10 +275,10 @@ export function createController({ client, now = () => Date.now(), sleep = ms =>
   // 打开希音授权页：回调地址由插件按当前环境生成，授权结果在同一标签页里读回。
   async function startAuthorization({ appId, appSecretKey, baseUrl }) {
     const { appIdValue, appSecret } = appCredentials(appId, appSecretKey);
-    state.settings = mergeSettings({ ...state.settings, appId: appIdValue, baseUrl: baseUrl ?? state.settings.baseUrl });
-    state.categories = null;
-    await client.storage.set(SETTINGS_KEY, state.settings);
+    await replaceSettings({ appId: appIdValue, baseUrl: baseUrl ?? state.settings.baseUrl });
     await client.credentials.set(APP_SECRET_CREDENTIAL, appSecret);
+    state.settings = mergeSettings({ ...state.settings, credentialEnvironment: state.settings.baseUrl });
+    await client.storage.set(SETTINGS_KEY, state.settings);
     const callbackUrl = callbackUrlOf(state.settings.baseUrl);
     const nonce = createAuthorizationState();
     const address = authorizationUrl({ appId: appIdValue, baseUrl: state.settings.baseUrl, state: nonce, callbackUrl });
@@ -250,24 +311,28 @@ export function createController({ client, now = () => Date.now(), sleep = ms =>
     const { appIdValue, appSecret } = appCredentials(appId, appSecretKey);
     if (!String(tempToken ?? '').trim()) throw new Error('希音授权没有返回临时授权码，请重新连接。');
     // 换密钥要跟着界面上选的环境走，否则选了测试环境却把授权码发到正式环境。
-    state.settings = mergeSettings({ ...state.settings, appId: appIdValue, baseUrl: baseUrl ?? state.settings.baseUrl });
-    await client.storage.set(SETTINGS_KEY, state.settings);
+    await replaceSettings({ appId: appIdValue, baseUrl: baseUrl ?? state.settings.baseUrl });
     await client.credentials.set(APP_SECRET_CREDENTIAL, appSecret);
     const info = await authorizeWithTempToken({ client, appId: appIdValue, tempToken, baseUrl: state.settings.baseUrl, now });
     const secretKey = await decryptSecretKey(info.secretKey, appSecret);
-    state.settings = mergeSettings({ ...state.settings, openKeyId: info.openKeyId });
+    await client.credentials.set(SECRET_CREDENTIAL, secretKey);
+    state.settings = mergeSettings({
+      ...state.settings,
+      openKeyId: info.openKeyId,
+      credentialEnvironment: state.settings.baseUrl
+    });
     state.categories = null;
     await client.storage.set(SETTINGS_KEY, state.settings);
-    await client.credentials.set(SECRET_CREDENTIAL, secretKey);
     notify();
     return { openKeyId: info.openKeyId, supplierId: info.supplierId };
   }
 
   async function credentialStatus() {
+    const environmentMatches = state.settings.credentialEnvironment === state.settings.baseUrl;
     return {
-      sheinSecret: await client.credentials.status(SECRET_CREDENTIAL),
-      appSecret: await client.credentials.status(APP_SECRET_CREDENTIAL),
-      openKeyId: Boolean(state.settings.openKeyId),
+      sheinSecret: environmentMatches && await client.credentials.status(SECRET_CREDENTIAL),
+      appSecret: environmentMatches && await client.credentials.status(APP_SECRET_CREDENTIAL),
+      openKeyId: environmentMatches && Boolean(state.settings.openKeyId),
       model: state.settings.model
     };
   }

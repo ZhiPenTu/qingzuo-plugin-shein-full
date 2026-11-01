@@ -86,7 +86,9 @@ jobs:
       - name: Publish independently validated artifacts
         run: |
           node --input-type=module -e "import pkg from './package.json' with {type:'json'};if(process.env.GITHUB_REF_NAME!=='v'+pkg.version)throw new Error('Tag mismatch');"
-          gh release create "$GITHUB_REF_NAME" release/*.ecplugin release/catalog-*.json --verify-tag --title "$GITHUB_REF_NAME" --notes "修复网络出口检测因未声明请求头权限而失败的问题，代理出口检测现在可以正常返回 IP、位置和运营商。"
+          node --input-type=module -e "import pkg from './package.json' with {type:'json'};process.stdout.write(pkg.commerce.releaseNotes)" > release-notes.md
+          test -s release-notes.md
+          gh release create "$GITHUB_REF_NAME" release/*.ecplugin release/catalog-*.json --verify-tag --title "$GITHUB_REF_NAME" --notes-file release-notes.md
       - name: Notify market when restricted dispatch credentials are configured
         env:
           GH_TOKEN: ${{ secrets.MARKET_TRIGGER_TOKEN }}
