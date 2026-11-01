@@ -1,6 +1,6 @@
 {
   "name": "@commerce/plugin-shein-full",
-  "version": "0.4.8",
+  "version": "0.4.9",
   "private": true,
   "type": "module",
   "commerce": {
@@ -11,7 +11,7 @@
     "category": "电商工具",
     "api": "^1.5.0",
     "ui": "ui/index.html",
-    "releaseNotes": "修复希音连接失败时无法定位原因的问题；升级后请重新连接一次希音店铺，切换正式与测试环境时也会清除旧环境的登录凭据，避免提交时出现未授权。",
+    "releaseNotes": "修复连接希音时授权页提示“关键参数丢失”的问题；升级后请重新连接一次希音店铺并完成授权。",
     "permissions": {
       "files": true,
       "storage": true,
