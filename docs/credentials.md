@@ -64,7 +64,7 @@ DOMAIN,zhipentu.github.io,DIRECT
 
 希音开放平台把「应用」和「店铺」分开授权：应用的 `APP_ID`、`APP_SecretKey` 只能证明开发者身份，业务接口要的是店铺的 `openKeyId` 与 `secretKey`。
 
-1. 插件用 `appid` 拼出授权链接（`https://<授权页域名>/#/empower?appid=<APP_ID>&redirectUrl=<base64>&state=<state>`），在内嵌浏览器里打开；商家同意后回调地址会带 `tempToken` 与 `state`。
+1. 插件用 `appid` 拼出授权链接（`https://<授权页域名>/?appid=<APP_ID>&redirectUrl=<base64>&state=<state>#/empower`），在内嵌浏览器里打开；商家同意后回调地址会带 `tempToken` 与 `state`。
 2. 调 `POST /open-api/auth/get-by-token`，请求头用 `x-lt-appid`，签名用 `APP_ID`（顶替 `openKeyId`）与 `APP_SecretKey` 生成，请求体是 `{ "tempToken": "..." }`。
 3. 返回的 `info.openKeyId` 直接可用；`info.secretKey` 是密文，要用 `APP_SecretKey` 解密：密钥取 `APP_SecretKey` 的 UTF-8 前 16 字节，AES-128-CBC，IV 固定 `space-station-de`，PKCS7 补齐。
 

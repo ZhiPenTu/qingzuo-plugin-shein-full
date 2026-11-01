@@ -51,7 +51,8 @@ export function authorizationUrl({ appId, baseUrl, state, callbackUrl }) {
   if (!nonce) throw new Error('授权请求无效，请重新连接希音。');
   const origin = authorizeOriginOf(baseUrl);
   const redirect = encodeURIComponent(bytesToBase64(new TextEncoder().encode(callbackUrl ?? callbackUrlOf(baseUrl))));
-  return `${origin}/${AUTHORIZE_ROUTE}?appid=${encodeURIComponent(value)}&redirectUrl=${redirect}&state=${encodeURIComponent(nonce)}`;
+  // 授权页从 location.search 读取参数，查询串必须放在哈希路由之前。
+  return `${origin}/?appid=${encodeURIComponent(value)}&redirectUrl=${redirect}&state=${encodeURIComponent(nonce)}${AUTHORIZE_ROUTE}`;
 }
 
 function readParam(text, name) {

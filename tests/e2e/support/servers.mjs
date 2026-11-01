@@ -91,7 +91,8 @@ const HOME_PAGE = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"
 const AUTHORIZE_PAGE = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>希音授权</title></head>
 <body><p>正在完成店铺授权…</p>
 <script>
-const query = new URLSearchParams(location.hash.includes('?') ? location.hash.slice(location.hash.indexOf('?') + 1) : location.search);
+// 与希音当前授权页一致，只从普通查询串读取参数，哈希只用于前端路由。
+const query = new URLSearchParams(location.search);
 const redirect = query.get('redirectUrl');
 const state = query.get('state') || '';
 // 授权页把 appid 与回调地址原样带回来，测试才能在服务端看到这次授权用了什么参数。

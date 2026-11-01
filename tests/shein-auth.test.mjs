@@ -53,14 +53,17 @@ test('授权链接带上应用的 appid、回调地址与本次授权的 state',
   const address = new URL(authorizationUrl({ appId: '10ADAABD6E000B247A428884951B4', baseUrl: 'https://openapi.sheincorp.cn', state: 'qz-1', callbackUrl }));
   assert.equal(address.origin, 'https://openapi-sem.sheincorp.com');
   assert.equal(address.pathname, '/');
-  assert.equal(address.hash, `#/empower?appid=10ADAABD6E000B247A428884951B4&redirectUrl=${encodeURIComponent(btoa(callbackUrl))}&state=qz-1`);
-  const params = new URLSearchParams(address.hash.slice(address.hash.indexOf('?') + 1));
-  assert.equal(params.get('appid'), '10ADAABD6E000B247A428884951B4');
-  assert.equal(params.get('state'), 'qz-1');
-  assert.equal(atob(params.get('redirectUrl')), 'https://zhipentu.github.io/qingzuo-desktop/shein-auth-callback.html?from=qingzuo');
+  assert.equal(address.hash, '#/empower');
+  // 希音授权页通过 location.search 读取参数；放进 hash 会被判为“关键参数丢失”。
+  assert.equal(address.searchParams.get('appid'), '10ADAABD6E000B247A428884951B4');
+  assert.equal(address.searchParams.get('state'), 'qz-1');
+  assert.equal(atob(address.searchParams.get('redirectUrl')), 'https://zhipentu.github.io/qingzuo-desktop/shein-auth-callback.html?from=qingzuo');
   // 回调地址按当前环境生成，不能把测试环境的授权结果发到正式环境；测试环境授权页与接口同域。
   assert.equal(callbackUrlOf('https://openapi-test01.sheincorp.cn/'), 'https://zhipentu.github.io/qingzuo-desktop/shein-auth-callback.html?from=qingzuo');
-  assert.equal(new URL(authorizationUrl({ appId: 'APP', baseUrl: 'https://openapi-test01.sheincorp.cn', state: 'qz-2' })).origin, 'https://openapi-test01.sheincorp.cn');
+  const testAddress = new URL(authorizationUrl({ appId: 'APP', baseUrl: 'https://openapi-test01.sheincorp.cn', state: 'qz-2' }));
+  assert.equal(testAddress.origin, 'https://openapi-test01.sheincorp.cn');
+  assert.equal(testAddress.hash, '#/empower');
+  assert.equal(testAddress.searchParams.get('appid'), 'APP');
   assert.throws(() => authorizationUrl({ appId: '', baseUrl: 'https://openapi.sheincorp.cn', state: 'qz-1' }), /APP_ID/);
   assert.throws(() => authorizationUrl({ appId: 'APP', baseUrl: 'https://openapi.sheincorp.cn', state: '' }), /重新连接/);
 });

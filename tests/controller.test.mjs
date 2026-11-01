@@ -376,10 +376,10 @@ test('用 APP_ID 与 APP_SecretKey 换取店铺凭据后即可直接发品', asy
   assert.equal(started.callbackUrl, 'https://zhipentu.github.io/qingzuo-desktop/shein-auth-callback.html?from=qingzuo');
   const address = new URL(started.authorizeUrl);
   assert.equal(address.origin, 'https://openapi-test01.sheincorp.cn');
-  const params = new URLSearchParams(address.hash.slice(address.hash.indexOf('?') + 1));
-  assert.equal(params.get('appid'), APP_ID);
-  assert.equal(atob(params.get('redirectUrl')), started.callbackUrl);
-  assert.equal(params.get('state'), started.state);
+  assert.equal(address.hash, '#/empower');
+  assert.equal(address.searchParams.get('appid'), APP_ID);
+  assert.equal(atob(address.searchParams.get('redirectUrl')), started.callbackUrl);
+  assert.equal(address.searchParams.get('state'), started.state);
   assert.deepEqual(fake.calls.browser.find(call => call[0] === 'open'), ['open', started.authorizeUrl]);
   assert.equal(fake.secrets.get('shein-app-secret'), APP_SECRET);
 
