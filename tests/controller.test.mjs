@@ -525,7 +525,7 @@ test('网络出口检测只读取 IP 服务，不携带店铺凭据', async () =
   assert.equal(fake.calls.network.length, 1);
   assert.equal(fake.calls.network[0].url, 'https://ipinfo.io/json');
   assert.equal(fake.calls.network[0].method, 'GET');
-  assert.deepEqual(fake.calls.network[0].headers, { Accept: 'application/json' });
+  assert.equal(fake.calls.network[0].headers, undefined);
   assert.equal(fake.calls.network[0].credential, undefined);
   assert.equal(fake.calls.network[0].json, undefined);
 });

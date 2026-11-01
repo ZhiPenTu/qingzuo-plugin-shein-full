@@ -286,7 +286,6 @@ export function createController({ client, now = () => Date.now(), sleep = ms =>
     const response = await client.network.request({
       url: NETWORK_EXIT_URL,
       method: 'GET',
-      headers: { Accept: 'application/json' },
       taskId: 'network-exit'
     });
     return parseNetworkExit(response);

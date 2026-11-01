@@ -1,6 +1,6 @@
 {
   "name": "@commerce/plugin-shein-full",
-  "version": "0.4.6",
+  "version": "0.4.7",
   "private": true,
   "type": "module",
   "commerce": {
@@ -11,7 +11,7 @@
     "category": "电商工具",
     "api": "^1.5.0",
     "ui": "ui/index.html",
-    "releaseNotes": "设置页新增网络代理指引与接口出口检测，可复制 Clash/Surge DIRECT 规则并识别代理是否接管接口请求。",
+    "releaseNotes": "修复网络出口检测因未声明请求头权限而失败的问题，代理出口检测现在可以正常返回 IP、位置和运营商。",
     "permissions": {
       "files": true,
       "storage": true,
