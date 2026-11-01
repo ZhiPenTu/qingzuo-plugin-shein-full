@@ -5,7 +5,7 @@ import {
   parseFillInStandard, parsePermission, parsePublishResult, parseQuota, parseRepeated, parseUploadedUrl, PATHS,
   SHEIN_BASE_URL, SheinError
 } from '../ui/shein-client.mjs';
-import { createFakeClient, ok, businessError } from './support/fake-host.mjs';
+import { createFakeClient, ok, businessError, encodeEnvelope } from './support/fake-host.mjs';
 
 function gateway(respond) {
   const fake = createFakeClient({ respond });
@@ -65,6 +65,71 @@ test('业务错误码与 HTTP 错误都转成带原因的异常', async () => {
   const { gateway: unauthorized } = gateway(() => ({ status: 401, mime: 'application/json', data: '' }));
   await assert.rejects(() => unauthorized.quota(), /凭据无效/);
   assert.throws(() => parseEnvelope({ status: 200, data: 'not-base64-json' }), /无法解析/);
+});
+
+test('401/403 保留希音返回的原因、错误码和追踪编号', () => {
+  assert.throws(
+    () => parseEnvelope({
+      status: 401,
+      mime: 'application/json',
+      data: encodeEnvelope({ code: 'AUTH-401-7', msg: '店铺凭据与应用不匹配', traceId: 'trace-401-7' })
+    }),
+    error => error instanceof SheinError
+      && error.code === 'AUTH-401-7'
+      && error.traceId === 'trace-401-7'
+      && /店铺凭据与应用不匹配/.test(error.message)
+      && /重新连接/.test(error.message)
+      && /trace-401-7/.test(error.message)
+  );
+
+  assert.throws(
+    () => parseEnvelope({
+      status: 403,
+      mime: 'application/json',
+      data: JSON.stringify({ code: 'AUTH-403-9', message: '应用凭据已过期', traceId: 'trace-403-9' })
+    }),
+    error => error instanceof SheinError
+      && error.code === 'AUTH-403-9'
+      && error.traceId === 'trace-403-9'
+      && /应用凭据已过期/.test(error.message)
+  );
+});
+
+test('未授权响应只展示清洗后的原因，不泄露密钥与令牌', () => {
+  assert.throws(
+    () => parseEnvelope({
+      status: 403,
+      data: encodeEnvelope({
+        code: 'AUTH-403-11',
+        msg: '签名失败 secretKey=STORE-SECRET tempToken=TEMP-TOKEN https://openapi.sheincorp.cn/x?token=URL-TOKEN&state=STATE-VALUE',
+        traceId: 'trace-403-11',
+        secretKey: 'EXTRA-SECRET'
+      })
+    }),
+    error => {
+      assert.doesNotMatch(error.message, /STORE-SECRET|TEMP-TOKEN|URL-TOKEN|STATE-VALUE|EXTRA-SECRET/);
+      assert.match(error.message, /签名失败/);
+      return true;
+    }
+  );
+});
+
+test('未授权响应无法解析时只回退到通用凭据提示', () => {
+  const responses = [
+    { status: 401, data: '' },
+    { status: 401, data: '%%%not-base64%%%' },
+    { status: 403, data: Buffer.from([0, 1, 2, 255]).toString('base64') },
+    { status: 403, data: encodeEnvelope('not-an-object') }
+  ];
+  for (const response of responses) {
+    assert.throws(
+      () => parseEnvelope(response),
+      error => error instanceof SheinError
+        && error.message.includes('希音凭据无效或未授权')
+        && error.message.includes('重新连接')
+        && !error.message.includes('%%%')
+    );
+  }
 });
 
 test('Base64 信封解码为 UTF-8 文本', () => {

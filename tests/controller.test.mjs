@@ -192,9 +192,66 @@ test('旧版全托管正式接口域名自动迁移到当前域名', async () =>
     appId: APP_ID,
     openKeyId: 'STORE-KEY'
   });
+  await fake.storage.set('drafts', [{ id: 'draft-before-migration', status: 'review' }]);
+  fake.secrets.set('shein-app-secret', APP_SECRET);
+  fake.secrets.set('shein-secret-key', 'OLD-STORE-SECRET');
   const controller = createController({ client: fake.client, now: () => 1760000000000 });
   await controller.load();
   assert.equal(controller.getState().settings.baseUrl, 'https://openapi.sheincorp.cn');
+  assert.equal(controller.getState().settings.openKeyId, '');
+  assert.equal(controller.getState().settings.credentialEnvironment, '');
+  assert.equal(fake.secrets.has('shein-app-secret'), false);
+  assert.equal(fake.secrets.has('shein-secret-key'), false);
+  assert.equal(controller.getState().drafts[0].id, 'draft-before-migration');
+  assert.equal(fake.storage.get('settings').baseUrl, 'https://openapi.sheincorp.cn');
+  assert.equal(fake.storage.get('settings').openKeyId, '');
+});
+
+test('旧版本未标记环境的凭据只清除一次，避免跨环境继续签名', async () => {
+  const fake = createFakeClient({ snapshot });
+  await fake.storage.set('settings', {
+    model: 'mock-translator',
+    coefficient: 1.35,
+    site: 'shein',
+    baseUrl: 'https://openapi.sheincorp.cn',
+    appId: APP_ID,
+    openKeyId: 'STORE-KEY'
+  });
+  fake.secrets.set('shein-app-secret', APP_SECRET);
+  fake.secrets.set('shein-secret-key', 'OLD-STORE-SECRET');
+  const controller = createController({ client: fake.client, now: () => 1760000000000 });
+  await controller.load();
+  assert.equal(controller.getState().settings.model, 'mock-translator');
+  assert.equal(controller.getState().settings.openKeyId, '');
+  assert.equal(controller.getState().settings.credentialEnvironment, '');
+  assert.equal(fake.secrets.size, 0);
+
+  await controller.load();
+  assert.equal(fake.calls.credentials.filter(([name]) => name === 'clear').length, 2);
+});
+
+test('切换希音环境会清除旧凭据，同环境保存不会误清', async () => {
+  const { controller, secrets, calls } = await readyController();
+  secrets.set('shein-app-secret', APP_SECRET);
+  assert.equal(controller.getState().settings.credentialEnvironment, 'https://openapi.sheincorp.cn');
+
+  await controller.saveSettings({ baseUrl: 'https://openapi.sheincorp.cn/' });
+  assert.equal(secrets.get('shein-secret-key'), 'secret-value');
+  assert.equal(secrets.get('shein-app-secret'), APP_SECRET);
+
+  await controller.saveSettings({
+    model: 'mock-translator',
+    baseUrl: 'https://openapi-test01.sheincorp.cn'
+  });
+  assert.equal(controller.getState().settings.baseUrl, 'https://openapi-test01.sheincorp.cn');
+  assert.equal(controller.getState().settings.openKeyId, '');
+  assert.equal(controller.getState().settings.credentialEnvironment, '');
+  assert.equal(controller.getState().settings.model, 'mock-translator');
+  assert.equal(secrets.size, 0);
+  assert.deepEqual(
+    calls.credentials.filter(([name]) => name === 'clear').map(([, credential]) => credential).sort(),
+    ['shein-app-secret', 'shein-secret-key']
+  );
 });
 
 test('未点确认时提交直接被拒绝，发品网关零调用', async () => {
@@ -338,6 +395,7 @@ test('用 APP_ID 与 APP_SecretKey 换取店铺凭据后即可直接发品', asy
   assert.equal(controller.getState().settings.appId, APP_ID);
   assert.equal(controller.getState().settings.openKeyId, 'STORE-KEY');
   assert.equal(controller.getState().settings.baseUrl, 'https://openapi-test01.sheincorp.cn');
+  assert.equal(controller.getState().settings.credentialEnvironment, 'https://openapi-test01.sheincorp.cn');
   assert.equal(fake.secrets.get('shein-app-secret'), APP_SECRET);
   assert.equal(fake.secrets.get('shein-secret-key'), 'store-secret');
   assert.equal((await controller.credentialStatus()).sheinSecret, true);
