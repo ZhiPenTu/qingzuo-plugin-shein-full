@@ -56,8 +56,18 @@ test('插件界面只用 textContent 写文本，不注入 HTML', () => {
 test('密钥输入框带可切换显隐的图标按钮', () => {
   for (const id of ['app-secret', 'secret-key']) {
     assert.match(markup, new RegExp(`id="${id}" type="password"`));
-    assert.match(markup, new RegExp(`data-password-toggle="${id}"[^>]*aria-pressed="false"`));
+    assert.match(markup, new RegExp(`data-password-toggle="${id}"[^>]*aria-pressed="false"[^>]*disabled`));
+    assert.match(markup, new RegExp(`id="${id}-state" class="secret-state" hidden`));
   }
   assert.match(app, /function bindSecretToggles\(\)/);
-  assert.match(app, /input\.type = visible \? 'text' : 'password'/);
+  assert.match(app, /const sessionSecrets = new Map\(\)/);
+  assert.match(app, /const revealedSecretIds = new Set\(\)/);
+  assert.match(app, /button\.disabled = !canReveal/);
+  assert.match(app, /input\.placeholder = stored \? \(cached \? '已保存，本次会话可回显' : '已保存，不会回显'\) : '输入新密钥'/);
+  assert.match(app, /rememberSessionSecret\('app-secret', appSecretKey\)/);
+  assert.match(app, /rememberSessionSecret\('secret-key', value\)/);
+  assert.match(app, /addEventListener\('pagehide', \(\) => clearSecretSession\(\{ clearInputs: true \}\)\)/);
+  assert.match(app, /APP_SecretKey 已保存；重新打开轻作后需再次输入。/);
+  assert.doesNotMatch(app, /重新连接时请再次输入/);
+  assert.doesNotMatch(app, /appSecretValue/);
 });

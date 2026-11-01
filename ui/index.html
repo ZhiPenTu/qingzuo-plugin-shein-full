@@ -65,10 +65,13 @@
         <input id="app-id" type="text" autocomplete="off" placeholder="应用管理里的 APP_ID">
       </div>
       <div class="field">
-        <label for="app-secret">希音 APP_SecretKey</label>
+        <div class="field-label">
+          <label for="app-secret">希音 APP_SecretKey</label>
+          <span id="app-secret-state" class="secret-state" hidden></span>
+        </div>
         <div class="secret-input">
-          <input id="app-secret" type="password" autocomplete="off" placeholder="不会显示已保存的值">
-          <button id="app-secret-toggle" class="secret-toggle" type="button" data-password-toggle="app-secret" data-secret-label="希音 APP_SecretKey" aria-controls="app-secret" aria-label="显示希音 APP_SecretKey" aria-pressed="false" title="显示希音 APP_SecretKey">
+          <input id="app-secret" type="password" autocomplete="off" placeholder="输入新密钥">
+          <button id="app-secret-toggle" class="secret-toggle" type="button" data-password-toggle="app-secret" data-secret-label="希音 APP_SecretKey" aria-controls="app-secret" aria-label="输入密钥后可切换显示" aria-pressed="false" title="输入密钥后可切换显示" disabled>
             <svg class="eye-open" viewBox="0 0 24 24" aria-hidden="true" fill="none">
               <path d="M2.5 12s3.5-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.5 6.5-9.5 6.5S2.5 12 2.5 12Z" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
               <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.7"/>
@@ -99,11 +102,14 @@
           <input id="open-key" type="text" autocomplete="off" placeholder="店铺凭据里的 openKeyId">
         </div>
         <div class="field">
-          <label for="secret-key">希音 secretKey</label>
+          <div class="field-label">
+            <label for="secret-key">希音 secretKey</label>
+            <span id="secret-key-state" class="secret-state" hidden></span>
+          </div>
           <div class="row">
             <div class="secret-input">
-              <input id="secret-key" type="password" autocomplete="off" placeholder="不会显示已保存的值">
-              <button id="secret-key-toggle" class="secret-toggle" type="button" data-password-toggle="secret-key" data-secret-label="希音 secretKey" aria-controls="secret-key" aria-label="显示希音 secretKey" aria-pressed="false" title="显示希音 secretKey">
+              <input id="secret-key" type="password" autocomplete="off" placeholder="输入新密钥">
+              <button id="secret-key-toggle" class="secret-toggle" type="button" data-password-toggle="secret-key" data-secret-label="希音 secretKey" aria-controls="secret-key" aria-label="输入密钥后可切换显示" aria-pressed="false" title="输入密钥后可切换显示" disabled>
                 <svg class="eye-open" viewBox="0 0 24 24" aria-hidden="true" fill="none">
                   <path d="M2.5 12s3.5-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.5 6.5-9.5 6.5S2.5 12 2.5 12Z" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
                   <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.7"/>

@@ -131,6 +131,7 @@ select { cursor: pointer; }
   color: var(--muted); background: transparent; transform: translateY(-50%);
 }
 .secret-toggle:hover:enabled { border-color: transparent; color: var(--brand); background: var(--brand-soft); }
+.secret-toggle:disabled { color: var(--muted); background: transparent; opacity: .38; }
 .secret-toggle svg { width: 17px; height: 17px; pointer-events: none; }
 .secret-toggle .eye-closed { display: none; }
 .secret-toggle[aria-pressed="true"] .eye-open { display: none; }
@@ -145,6 +146,11 @@ input.narrow, input#coefficient { width: 90px !important; max-width: 90px !impor
 
 .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
 .field > label, .field-head > label { color: var(--ink); font-size: 12px; font-weight: 600; }
+.field-label { display: flex; min-height: 18px; align-items: center; justify-content: space-between; gap: 8px; }
+.field-label > label { color: var(--ink); font-size: 12px; font-weight: 600; }
+.secret-state { border-radius: 4px; padding: 1px 6px; font-size: 10px; font-weight: 600; line-height: 1.5; white-space: nowrap; }
+.secret-state.is-saved { color: var(--brand); background: var(--brand-soft); }
+.secret-state.is-dirty { color: var(--warn); background: var(--warn-soft); }
 .field-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 button.link-btn { border: 0; border-radius: 4px; padding: 2px 4px; color: var(--brand); background: transparent; font-size: 12px; font-weight: 500; }
 button.link-btn:hover:enabled { background: var(--brand-soft); }
