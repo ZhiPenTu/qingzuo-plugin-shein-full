@@ -98,7 +98,10 @@ test('1688 采集到希音提交：确认前零发品调用，签名与幂等键
     await plugin.locator('#toggle-settings').click();
     await plugin.locator('#base-url').selectOption('https://openapi-test01.sheincorp.cn');
     await plugin.locator('#app-id').fill(APP_ID);
+    await expect(plugin.locator('#app-secret-toggle')).toBeDisabled();
+    await expect(plugin.locator('#app-secret')).toHaveAttribute('placeholder', '输入新密钥');
     await plugin.locator('#app-secret').fill(APP_SECRET);
+    await expect(plugin.locator('#app-secret-toggle')).toBeEnabled();
     await plugin.locator('#app-secret-toggle').click();
     await expect(plugin.locator('#app-secret')).toHaveAttribute('type', 'text');
     await expect(plugin.locator('#app-secret')).toHaveValue(APP_SECRET);
@@ -112,9 +115,30 @@ test('1688 采集到希音提交：确认前零发品调用，签名与幂等键
     await expect(plugin.locator('#callback-url')).toHaveValue('https://zhipentu.github.io/qingzuo-desktop/shein-auth-callback.html?from=qingzuo');
     await plugin.locator('#authorize').click();
     await expect(plugin.locator('#shein-status')).toHaveText('已连接希音，可以提交发品。', { timeout: 60000 });
-    // 换到的 openKeyId 与解密的 secretKey 都进了设置和凭据库，APP_SecretKey 不留在界面上。
+    // 换到的 openKeyId 与解密的 secretKey 都进了设置和凭据库。APP_SecretKey
+    // 输入框会清空，但本次页面会话里刚输入的值可以由眼睛临时回显。
     await expect(plugin.locator('#open-key')).toHaveValue(OPEN_KEY_ID);
     await expect(plugin.locator('#app-secret')).toHaveValue('');
+    await expect(plugin.locator('#app-secret-toggle')).toBeEnabled();
+    await expect(plugin.locator('#app-secret')).toHaveAttribute('placeholder', '已保存，本次会话可回显');
+    await expect(plugin.locator('#app-secret-state')).toHaveText('本次会话可回显');
+    await plugin.locator('#app-secret-toggle').click();
+    await expect(plugin.locator('#app-secret')).toHaveAttribute('type', 'text');
+    await expect(plugin.locator('#app-secret')).toHaveValue(APP_SECRET);
+    await plugin.locator('#app-secret-toggle').click();
+    await expect(plugin.locator('#app-secret')).toHaveAttribute('type', 'password');
+    await expect(plugin.locator('#app-secret')).toHaveValue(APP_SECRET);
+    await plugin.locator('.credential-fallback > summary').click();
+    await expect(plugin.locator('#secret-key-toggle')).toBeDisabled();
+    await expect(plugin.locator('#secret-key')).toHaveAttribute('placeholder', '已保存，不会回显');
+    await expect(plugin.locator('#secret-key-state')).toHaveText('已保存');
+    await plugin.locator('#toggle-settings').click();
+    // 关闭设置会丢弃本会话缓存和眼睛回填的明文；重新打开后只剩“已保存”状态。
+    await plugin.locator('#toggle-settings').click();
+    await expect(plugin.locator('#app-secret')).toHaveValue('');
+    await expect(plugin.locator('#app-secret-toggle')).toBeDisabled();
+    await expect(plugin.locator('#app-secret')).toHaveAttribute('placeholder', '已保存，不会回显');
+    await expect(plugin.locator('#app-secret-state')).toHaveText('已保存');
     await plugin.locator('#toggle-settings').click();
 
     // 授权页确实是插件自己打开的：appid 与回调地址都对得上，state 原样带回来。

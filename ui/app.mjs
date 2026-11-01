@@ -50,21 +50,59 @@ const state = {
   titleDialog: { open: false, loading: false, versions: [], selected: '', usedImage: false }
 };
 
-// APP_SecretKey 只在换取店铺凭据时需要明文：签名走主进程里的凭据，
-// 解密希音下发的 secretKey 需要原值。输入框在成功后清空，本次会话内改用内存副本，
-// 这样重新授权时不用反复填密钥。
-let appSecretValue = '';
-
 const clone = value => JSON.parse(JSON.stringify(value ?? null));
+
+const SECRET_FIELDS = Object.freeze({
+  'app-secret': { stateId: 'app-secret-state', saved: () => Boolean(state.credentials?.appSecret) },
+  'secret-key': { stateId: 'secret-key-state', saved: () => Boolean(state.credentials?.sheinSecret) }
+});
+const sessionSecrets = new Map();
+const revealedSecretIds = new Set();
+
+function syncSecretField(id) {
+  const input = $(id);
+  const config = SECRET_FIELDS[id];
+  const button = document.querySelector(`[data-password-toggle="${id}"]`);
+  const stateNode = config ? $(config.stateId) : null;
+  if (!input || !config || !button) return;
+  const hasValue = Boolean(input.value.trim());
+  const saved = config.saved();
+  const cached = sessionSecrets.get(id);
+  const stored = saved || Boolean(cached);
+  const canReveal = hasValue || Boolean(cached);
+  const sessionValue = Boolean(cached && hasValue && input.value === cached);
+  if (!hasValue) input.type = 'password';
+  const visible = hasValue && input.type === 'text';
+  const label = button.dataset.secretLabel || '密钥';
+  const action = visible ? '隐藏' : '显示';
+  const disabledLabel = saved ? `已保存的${label}不会回显` : `输入${label}后可切换显示`;
+  const buttonLabel = hasValue ? action + label : cached ? `显示本次会话保存的${label}` : disabledLabel;
+  button.disabled = !canReveal;
+  button.setAttribute('aria-disabled', String(!canReveal));
+  button.setAttribute('aria-pressed', String(visible));
+  button.setAttribute('aria-label', buttonLabel);
+  button.title = buttonLabel;
+  input.placeholder = stored ? (cached ? '已保存，本次会话可回显' : '已保存，不会回显') : '输入新密钥';
+  if (stateNode) {
+    const text = stored ? (hasValue && !sessionValue ? '输入将覆盖' : cached ? '本次会话可回显' : '已保存') : '';
+    stateNode.textContent = text;
+    stateNode.hidden = !text;
+    stateNode.classList.toggle('is-dirty', text === '输入将覆盖');
+    stateNode.classList.toggle('is-saved', Boolean(text) && text !== '输入将覆盖');
+  }
+}
 
 function setSecretVisible(input, button, visible) {
   if (!input || !button) return;
-  input.type = visible ? 'text' : 'password';
-  button.setAttribute('aria-pressed', String(visible));
-  const action = visible ? '隐藏' : '显示';
-  const label = action + (button.dataset.secretLabel || '密钥');
-  button.setAttribute('aria-label', label);
-  button.title = label;
+  const cached = sessionSecrets.get(input.id);
+  if (visible && !input.value.trim() && cached) {
+    input.value = cached;
+  }
+  if (visible && input.value.trim()) {
+    revealedSecretIds.add(input.id);
+  }
+  input.type = visible && input.value.trim() ? 'text' : 'password';
+  syncSecretField(input.id);
 }
 
 function resetSecretVisibility(id) {
@@ -72,11 +110,41 @@ function resetSecretVisibility(id) {
   setSecretVisible(input, document.querySelector(`[data-password-toggle="${id}"]`), false);
 }
 
+function rememberSessionSecret(id, value) {
+  const secret = String(value ?? '').trim();
+  if (!secret || !SECRET_FIELDS[id]) return;
+  sessionSecrets.set(id, secret);
+  revealedSecretIds.delete(id);
+  syncSecretField(id);
+}
+
+function forgetSessionSecret(id, { clearInput = false } = {}) {
+  sessionSecrets.delete(id);
+  revealedSecretIds.delete(id);
+  if (clearInput) {
+    const input = $(id);
+    if (input) input.value = '';
+  }
+  resetSecretVisibility(id);
+}
+
+function clearSecretSession({ clearInputs = false } = {}) {
+  const revealed = new Set(revealedSecretIds);
+  sessionSecrets.clear();
+  revealedSecretIds.clear();
+  for (const id of Object.keys(SECRET_FIELDS)) {
+    const input = $(id);
+    if (input && (clearInputs || revealed.has(id))) input.value = '';
+    resetSecretVisibility(id);
+  }
+}
+
 function bindSecretToggles() {
   for (const button of document.querySelectorAll('[data-password-toggle]')) {
     const input = $(button.dataset.passwordToggle);
     if (!input) continue;
-    setSecretVisible(input, button, false);
+    syncSecretField(input.id);
+    input.addEventListener('input', () => syncSecretField(input.id));
     button.addEventListener('click', () => {
       setSecretVisible(input, button, input.type === 'password');
       input.focus({ preventScroll: true });
@@ -1648,8 +1716,9 @@ async function doSaveSettings() {
 }
 
 async function doAuthorize() {
+  // 系统凭据库不会自动回填；本次页面会话输入过的值可由眼睛临时回显。
   const appId = $('app-id').value.trim();
-  const appSecretKey = $('app-secret').value.trim() || appSecretValue;
+  const appSecretKey = $('app-secret').value.trim();
   if (!appId) {
     setStatus('shein-status', '请先填写希音 APP_ID。', true);
     return;
@@ -1663,7 +1732,8 @@ async function doAuthorize() {
   const connected = await run('正在打开希音授权页…', async () => {
     state.credentialRevision += 1;
     const started = await controller.startAuthorization({ appId, appSecretKey, baseUrl });
-    appSecretValue = appSecretKey;
+    state.credentials = { ...(state.credentials ?? {}), appSecret: true };
+    rememberSessionSecret('app-secret', appSecretKey);
     $('app-secret').value = '';
     resetSecretVisibility('app-secret');
     $('cancel-authorize').hidden = false;
@@ -1679,6 +1749,7 @@ async function doAuthorize() {
       tempToken,
       baseUrl
     });
+    forgetSessionSecret('secret-key', { clearInput: true });
     await controller.resetAuthorizationTab();
     fillSettings();
     setStatus('shein-status', '已连接希音，可以提交发品。');
@@ -1712,6 +1783,8 @@ async function doSaveSheinSecret() {
   await run('正在保存密钥…', async () => {
     state.credentialRevision += 1;
     await controller.setSecret(SECRET_CREDENTIAL, value);
+    state.credentials = { ...(state.credentials ?? {}), sheinSecret: true };
+    rememberSessionSecret('secret-key', value);
     $('secret-key').value = '';
     resetSecretVisibility('secret-key');
     setStatus('secret-status', '已保存。');
@@ -1724,6 +1797,8 @@ async function doClearSheinSecret() {
   await run('正在清除密钥…', async () => {
     state.credentialRevision += 1;
     await controller.clearSecret(SECRET_CREDENTIAL);
+    state.credentials = { ...(state.credentials ?? {}), sheinSecret: false };
+    forgetSessionSecret('secret-key', { clearInput: true });
     setStatus('secret-status', '已清除。');
   }, 'secret-status');
   await renderCredentialStatus();
@@ -1737,11 +1812,13 @@ async function renderCredentialStatus() {
     // 凭据状态与保存密钥是两条异步链路：保存设置期间发起的刷新可能晚于
     // 用户刚看到的保存结果返回，不能让它把新状态覆盖回旧值。
     if (revision !== state.credentialRevision) return;
-    state.credentials = { openKeyId: status.openKeyId, sheinSecret: status.sheinSecret };
+    state.credentials = { openKeyId: status.openKeyId, appSecret: status.appSecret, sheinSecret: status.sheinSecret };
+    syncSecretField('app-secret');
+    syncSecretField('secret-key');
     if (status.openKeyId && status.sheinSecret) setStatus('shein-status', '已连接希音，可以提交发品。');
-    else if (status.appSecret) setStatus('shein-status', 'APP_SecretKey 已保存，可以连接希音。');
+    else if (status.appSecret) setStatus('shein-status', 'APP_SecretKey 已保存；重新打开轻作后需再次输入。');
     else setStatus('shein-status', '还没有连接希音。');
-    setStatus('secret-status', status.sheinSecret ? 'secretKey 已保存。' : 'secretKey 未保存。');
+    setStatus('secret-status', status.sheinSecret ? 'secretKey 已保存；输入新密钥会覆盖。' : 'secretKey 未保存。');
   } catch {
     setStatus('shein-status', '凭据状态暂时不可用。', true);
   }
@@ -1761,8 +1838,7 @@ function bindEvents() {
       void loadImageModels();
       void renderCredentialStatus();
     } else {
-      resetSecretVisibility('app-secret');
-      resetSecretVisibility('secret-key');
+      clearSecretSession();
     }
   });
   $('save-settings').addEventListener('click', () => void doSaveSettings());
@@ -1862,6 +1938,7 @@ function bindEvents() {
   $('submit-cancel').addEventListener('click', closeSubmit);
   $('submit-confirm').addEventListener('click', () => void confirmSubmit());
   $('submit-dialog').addEventListener('click', event => { if (event.target === $('submit-dialog')) closeSubmit(); });
+  window.addEventListener('pagehide', () => clearSecretSession({ clearInputs: true }));
 }
 
 controller.subscribe(() => render());
