@@ -1,6 +1,6 @@
 {
   "name": "@commerce/plugin-shein-full",
-  "version": "0.4.5",
+  "version": "0.4.6",
   "private": true,
   "type": "module",
   "commerce": {
@@ -11,7 +11,7 @@
     "category": "电商工具",
     "api": "^1.5.0",
     "ui": "ui/index.html",
-    "releaseNotes": "重新设计全托管铺货工作台，减少嵌套卡片与冗余留白，收紧导航、草稿、审核和图片编辑界面。",
+    "releaseNotes": "设置页新增网络代理指引与接口出口检测，可复制 Clash/Surge DIRECT 规则并识别代理是否接管接口请求。",
     "permissions": {
       "files": true,
       "storage": true,
@@ -21,7 +21,8 @@
       ],
       "network": [
         "https://openapi.sheincorp.cn",
-        "https://openapi-test01.sheincorp.cn"
+        "https://openapi-test01.sheincorp.cn",
+        "https://ipinfo.io"
       ],
       "networkHeaders": [
         "Content-Type",

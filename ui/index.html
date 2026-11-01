@@ -127,6 +127,30 @@
         </div>
       </div>
     </details>
+    <section class="network-guide" aria-labelledby="network-guide-title">
+      <div class="network-guide-head">
+        <div>
+          <h3 id="network-guide-title">网络代理与出口</h3>
+          <p class="hint">务必在 Surge、Clash 等网络代理里把以下域名设为 <code>DIRECT</code>。否则登录、采集、授权或发品可能被代理节点拦截。</p>
+        </div>
+        <div class="network-guide-actions">
+          <button id="copy-clash-direct" class="secondary small" type="button">复制 Clash 规则</button>
+          <button id="copy-surge-direct" class="secondary small" type="button">复制 Surge 规则</button>
+        </div>
+      </div>
+      <div id="network-direct-domains" class="network-domain-list" aria-label="需要直连的域名"></div>
+      <p id="network-copy-status" class="status" role="status"></p>
+      <div class="network-exit">
+        <div>
+          <strong>希音接口当前出口</strong>
+          <span id="network-exit-value">尚未检测</span>
+          <p id="network-exit-time" class="hint"></p>
+        </div>
+        <button id="check-network-exit" class="secondary small" type="button">检测出口</button>
+      </div>
+      <p id="network-exit-status" class="status" role="status"></p>
+      <p class="hint">点击检测时才会访问 <code>ipinfo.io</code>，不会发送店铺凭据。若这里显示代理节点 IP，说明代理已接管接口请求；1688 内嵌浏览器仍以系统代理设置为准。</p>
+    </section>
     <div class="actions">
       <button id="save-settings" type="button">保存设置</button>
       <span id="settings-status" class="status" role="status"></span>

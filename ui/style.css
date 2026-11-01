@@ -168,6 +168,20 @@ button.link-btn:hover:enabled { background: var(--brand-soft); }
 .credential-fallback { margin: 4px 0 14px; border-top: 1px solid var(--border); padding-top: 10px; }
 .credential-fallback > summary { cursor: pointer; color: var(--muted); font-size: 12px; }
 .credential-fallback .settings-grid { margin-top: 12px; }
+.network-guide { margin: 4px 0 14px; border-top: 1px solid var(--border); padding-top: 12px; }
+.network-guide-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 10px 16px; }
+.network-guide-head h3 { margin-bottom: 5px; font-size: 13px; }
+.network-guide-head > div:first-child { max-width: 680px; }
+.network-guide-actions { display: flex; flex: 0 0 auto; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.network-guide code { border-radius: 4px; padding: 1px 5px; color: var(--ink); background: var(--muted-surface); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; }
+.network-domain-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 6px 14px; margin: 10px 0 4px; }
+.network-domain { display: flex; min-width: 0; align-items: center; gap: 8px; }
+.network-domain code { flex: 0 0 auto; color: var(--brand); background: var(--brand-soft); }
+.network-domain span { overflow: hidden; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.network-exit { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 10px; border: 1px solid var(--border); border-radius: 6px; padding: 9px 11px; background: var(--muted-surface); }
+.network-exit strong { display: block; margin-bottom: 2px; font-size: 12px; }
+.network-exit span { color: var(--ink); font-size: 12px; }
+.network-exit .hint { margin-top: 2px; }
 
 /* ---------- Collect ---------- */
 .collect { padding: 14px 18px; }

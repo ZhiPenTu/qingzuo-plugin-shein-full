@@ -96,6 +96,11 @@ test('1688 采集到希音提交：确认前零发品调用，签名与幂等键
     const plugin = app.context().pages().find(candidate => candidate.url().startsWith(prefix));
 
     await plugin.locator('#toggle-settings').click();
+    await expect(plugin.locator('#network-guide-title')).toHaveText('网络代理与出口');
+    await expect(plugin.locator('#network-direct-domains')).toContainText('1688.com');
+    await expect(plugin.locator('#network-direct-domains')).toContainText('sheincorp.cn');
+    await plugin.locator('#copy-clash-direct').click();
+    await expect(plugin.locator('#network-copy-status')).toHaveText('已复制 Clash DIRECT 规则。');
     await plugin.locator('#base-url').selectOption('https://openapi-test01.sheincorp.cn');
     await plugin.locator('#app-id').fill(APP_ID);
     await expect(plugin.locator('#app-secret-toggle')).toBeDisabled();

@@ -25,7 +25,7 @@ test('只申请 1.4 新增能力所需的最小权限', () => {
   for (const header of ['x-lt-appid', 'x-lt-openKeyId', 'x-lt-timestamp', 'x-lt-signature', 'Content-Type']) {
     assert.ok(permissions.networkHeaders.includes(header), '缺少请求头权限：' + header);
   }
-  assert.deepEqual(permissions.network, ['https://openapi.sheincorp.cn', 'https://openapi-test01.sheincorp.cn']);
+  assert.deepEqual(permissions.network, ['https://openapi.sheincorp.cn', 'https://openapi-test01.sheincorp.cn', 'https://ipinfo.io']);
   // 声明的凭据必须都真的会被用到：APP_SecretKey 只用于换取与解密店铺凭据，
   // 店铺 secretKey 用于业务签名；openKeyId 不是密钥，存在设置里，不该占凭据槽。
   assert.deepEqual(permissions.credentials, ['shein-app-secret', 'shein-secret-key']);
@@ -36,7 +36,7 @@ test('只申请 1.4 新增能力所需的最小权限', () => {
 });
 
 test('打包需要的界面文件都在仓库里', async () => {
-  for (const file of ['ui/index.html', 'ui/app.mjs', 'ui/style.css', 'ui/sdk.mjs', 'ui/shein-auth.mjs', 'ui/images.mjs', 'ui/image-translate.mjs', 'LICENSE']) {
+  for (const file of ['ui/index.html', 'ui/app.mjs', 'ui/style.css', 'ui/sdk.mjs', 'ui/shein-auth.mjs', 'ui/images.mjs', 'ui/image-translate.mjs', 'ui/network-guide.mjs', 'LICENSE']) {
     await access(file);
   }
 });

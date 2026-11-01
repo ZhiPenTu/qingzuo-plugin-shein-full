@@ -14,6 +14,7 @@ import { buildPublishPayload } from './shein-payload.mjs';
 import { translateProduct, translateTitle } from './translate.mjs';
 import { suggestTitles as suggestProductTitles } from './title-suggestions.mjs';
 import { convertToJpeg, fitForVision, heroImage, imageNeedsConversion, imageTypeFor, readImageSize, submitImage, validateImage } from './images.mjs';
+import { NETWORK_EXIT_URL, parseNetworkExit } from './network-guide.mjs';
 
 export const DRAFTS_KEY = 'drafts';
 export const SETTINGS_KEY = 'settings';
@@ -279,6 +280,16 @@ export function createController({ client, now = () => Date.now(), sleep = ms =>
   async function imageCatalog() {
     const result = await client.ai.models({ source: 'proxy' });
     return Array.isArray(result) ? result : (result?.models ?? []);
+  }
+
+  async function checkNetworkExit() {
+    const response = await client.network.request({
+      url: NETWORK_EXIT_URL,
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      taskId: 'network-exit'
+    });
+    return parseNetworkExit(response);
   }
 
   async function collect(link) {
@@ -564,6 +575,7 @@ export function createController({ client, now = () => Date.now(), sleep = ms =>
 
   return Object.freeze({
     load, saveSettings, setSecret, clearSecret, startAuthorization, awaitAuthorization, resetAuthorizationTab, authorize, credentialStatus, aiCatalog, imageCatalog,
+    checkNetworkExit,
     collect, translate, translateOnlyTitle, suggestTitles, applyTitle, prepareImages, loadCategories, loadTemplate, suggestCategory, ensureTab,
     saveDraft, submit, poll, remove, resume,
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },

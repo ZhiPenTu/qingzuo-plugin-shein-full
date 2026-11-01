@@ -500,6 +500,36 @@ test('图片模型列表来自底座的代理模型目录', async () => {
   assert.deepEqual(fake.calls.ai.find(call => call[0] === 'models')[1], { source: 'proxy' });
 });
 
+test('网络出口检测只读取 IP 服务，不携带店铺凭据', async () => {
+  const payload = {
+    ip: '203.0.113.8',
+    city: 'Hangzhou',
+    region: 'Zhejiang',
+    country: 'CN',
+    org: 'Example ISP'
+  };
+  const fake = createFakeClient({
+    snapshot,
+    respond: routeOverrides({
+      '/json': () => ({ status: 200, mime: 'application/json', data: Buffer.from(JSON.stringify(payload)).toString('base64') })
+    })
+  });
+  const controller = createController({ client: fake.client, now: () => 1760000000000 });
+  await controller.load();
+  const value = await controller.checkNetworkExit();
+  assert.deepEqual(value, {
+    ip: '203.0.113.8',
+    location: 'Hangzhou · Zhejiang · CN',
+    org: 'Example ISP'
+  });
+  assert.equal(fake.calls.network.length, 1);
+  assert.equal(fake.calls.network[0].url, 'https://ipinfo.io/json');
+  assert.equal(fake.calls.network[0].method, 'GET');
+  assert.deepEqual(fake.calls.network[0].headers, { Accept: 'application/json' });
+  assert.equal(fake.calls.network[0].credential, undefined);
+  assert.equal(fake.calls.network[0].json, undefined);
+});
+
 test('保存设置可持久化自定义图像修改提示词', async () => {
   const fake = createFakeClient({ snapshot, respond: routeOverrides() });
   const controller = createController({ client: fake.client, now: () => 1760000000000 });

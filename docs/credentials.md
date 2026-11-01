@@ -13,8 +13,52 @@
 | 希音 APP_SecretKey | 设置 → 希音 APP_SecretKey | 存系统凭据库，只用于换密钥与解密；重新打开轻作后需要再次输入，本次会话输入过的值可临时回显 |
 | 店铺 secretKey | 设置 → 已有店铺 openKeyId 与 secretKey | 存系统凭据库；本次会话手动保存过的值可临时回显，授权自动换来的值不回显 |
 | 授权回调地址 | 设置 → 授权回调地址 | 插件按当前环境生成，只读；「连接希音」用它接收回调 |
+| 网络代理 | 设置 → 网络代理与出口 | 列出需要代理软件执行 `DIRECT` 的域名，可复制 Clash 或 Surge 规则 |
+| 希音接口当前出口 | 设置 → 网络代理与出口 | 手动检测时显示接口出口 IP、位置和运营商；请求只访问 `ipinfo.io/json`，不携带店铺凭据 |
 
 设置保存后立即生效。更换 AI 模型后，下一次翻译使用新模型。
+
+## 网络代理与出口
+
+1688 登录、采集、商品图片、希音授权、希音接口和授权回调都应直连，不要让代理节点接管。设置页会把以下域名标记为需要 `DIRECT`：
+
+| 域名 | 用途 |
+| --- | --- |
+| `1688.com` | 1688 登录、采集与商品页 |
+| `taobao.com`、`tmall.com` | 1688 账号登录可能发生的跳转 |
+| `alicdn.com` | 1688 商品图片 |
+| `sheincorp.cn` | 希音接口与测试环境 |
+| `sheincorp.com` | 希音授权与正式接口 |
+| `zhipentu.github.io` | 希音授权回调页 |
+
+Clash/Mihomo 复制内容：
+
+```yaml
+rules:
+  - DOMAIN-SUFFIX,1688.com,DIRECT
+  - DOMAIN-SUFFIX,taobao.com,DIRECT
+  - DOMAIN-SUFFIX,tmall.com,DIRECT
+  - DOMAIN-SUFFIX,alicdn.com,DIRECT
+  - DOMAIN-SUFFIX,sheincorp.cn,DIRECT
+  - DOMAIN-SUFFIX,sheincorp.com,DIRECT
+  - DOMAIN,zhipentu.github.io,DIRECT
+```
+
+Surge 复制内容：
+
+```text
+DOMAIN-SUFFIX,1688.com,DIRECT
+DOMAIN-SUFFIX,taobao.com,DIRECT
+DOMAIN-SUFFIX,tmall.com,DIRECT
+DOMAIN-SUFFIX,alicdn.com,DIRECT
+DOMAIN-SUFFIX,sheincorp.cn,DIRECT
+DOMAIN-SUFFIX,sheincorp.com,DIRECT
+DOMAIN,zhipentu.github.io,DIRECT
+```
+
+务必在代理软件里保存并重载规则。若使用 TUN、增强模式或全局路由，只改系统代理开关不够。
+
+「检测出口」按钮通过希音接口同一网络通道访问 `https://ipinfo.io/json`，只显示 IP、位置和运营商，不发送店铺凭据。它可以帮助识别 TUN/增强模式是否接管了接口请求；如果这里显示的是代理节点 IP，就说明接口请求已经走了代理。1688 内嵌浏览器跟随系统代理，仍需按上面的 `DIRECT` 规则配置。
 
 ## 店铺凭据怎么来
 

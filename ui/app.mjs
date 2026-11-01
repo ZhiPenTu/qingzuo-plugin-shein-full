@@ -7,6 +7,7 @@ import { IMAGE_TEXT_PROMPT } from './translate.mjs';
 import { SECRET_CREDENTIAL } from './shein-client.mjs';
 import { callbackUrlOf } from './shein-auth.mjs';
 import { findCategoryPath } from './category.mjs';
+import { NETWORK_DIRECT_RULES, clashDirectRules, networkExitText, surgeDirectRules } from './network-guide.mjs';
 
 const client = createPluginClient();
 const controller = createController({ client });
@@ -47,6 +48,7 @@ const state = {
   translateBatch: null,
   translateTotal: 0,
   translateDone: 0,
+  networkExitCheckedAt: 0,
   titleDialog: { open: false, loading: false, versions: [], selected: '', usedImage: false }
 };
 
@@ -1694,6 +1696,55 @@ function fillSettings() {
   $('callback-url').value = callbackUrlOf($('base-url').value);
 }
 
+function renderNetworkGuide() {
+  const list = $('network-direct-domains');
+  if (!list) return;
+  list.replaceChildren(...NETWORK_DIRECT_RULES.map(rule => el('div', { class: 'network-domain' },
+    el('code', { text: rule.value }),
+    el('span', { text: rule.label })
+  )));
+}
+
+async function copyText(value) {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+      return true;
+    }
+  } catch {}
+  const textarea = el('textarea', { readonly: true, 'aria-hidden': 'true' });
+  textarea.value = value;
+  textarea.style.position = 'fixed';
+  textarea.style.left = '-9999px';
+  textarea.style.opacity = '0';
+  document.body.append(textarea);
+  textarea.select();
+  let copied = false;
+  try { copied = document.execCommand('copy'); } catch {}
+  textarea.remove();
+  return copied;
+}
+
+async function copyDirectRules(kind) {
+  const clash = kind === 'clash';
+  const copied = await copyText(clash ? clashDirectRules() : surgeDirectRules());
+  setStatus(
+    'network-copy-status',
+    copied ? '已复制 ' + (clash ? 'Clash' : 'Surge') + ' DIRECT 规则。' : '复制失败，请手动选择域名规则。',
+    !copied
+  );
+}
+
+async function checkNetworkExit() {
+  await run('正在检测网络出口…', async () => {
+    const value = await controller.checkNetworkExit();
+    state.networkExitCheckedAt = Date.now();
+    $('network-exit-value').textContent = networkExitText(value);
+    $('network-exit-time').textContent = '检测于 ' + formatTime(state.networkExitCheckedAt);
+    setStatus('network-exit-status', '检测完成。请确认出口 IP 是否符合当前网络预期。');
+  }, 'network-exit-status');
+}
+
 async function doSaveSettings() {
   await run('正在保存设置…', async () => {
     state.credentialRevision += 1;
@@ -1851,6 +1902,9 @@ function bindEvents() {
   $('save-secret').addEventListener('click', () => void doSaveSheinSecret());
   $('clear-secret').addEventListener('click', () => void doClearSheinSecret());
   $('refresh-models').addEventListener('click', () => void loadModels());
+  $('copy-clash-direct').addEventListener('click', () => void copyDirectRules('clash'));
+  $('copy-surge-direct').addEventListener('click', () => void copyDirectRules('surge'));
+  $('check-network-exit').addEventListener('click', () => void checkNetworkExit());
 
   $('title-en').addEventListener('input', event => { state.form.product.title.en = event.target.value; markDirty(); });
   $('title-zh').addEventListener('input', event => { state.form.product.title.zh = event.target.value; markDirty(); });
@@ -1944,6 +1998,7 @@ function bindEvents() {
 controller.subscribe(() => render());
 bindSecretToggles();
 bindEvents();
+renderNetworkGuide();
 render();
 
 void (async () => {
