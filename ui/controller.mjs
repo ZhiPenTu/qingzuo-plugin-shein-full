@@ -15,6 +15,7 @@ import { translateProduct, translateTitle } from './translate.mjs';
 import { suggestTitles as suggestProductTitles } from './title-suggestions.mjs';
 import { convertToJpeg, fitForVision, heroImage, imageNeedsConversion, imageTypeFor, readImageSize, submitImage, validateImage } from './images.mjs';
 import { NETWORK_EXIT_URL, parseNetworkExit } from './network-guide.mjs';
+import { appCredentialFor, vaultEnvironmentOfBaseUrl, vaultSelectionError, vaultSettingsFor } from './vault-credentials.mjs';
 
 export const DRAFTS_KEY = 'drafts';
 export const SETTINGS_KEY = 'settings';
@@ -29,6 +30,11 @@ export const DEFAULT_SETTINGS = Object.freeze({
   site: 'shein',
   baseUrl: SHEIN_BASE_URL,
   credentialEnvironment: '',
+  credentialSource: 'manual',
+  credentialRecordId: '',
+  credentialRecordLabel: '',
+  credentialRecordAppId: '',
+  credentialRecordEnvironment: '',
   appId: '',
   openKeyId: ''
 });
@@ -71,8 +77,20 @@ function mergeSettings(value) {
   settings.coefficient = coefficientOf({ product: { coefficient: settings.coefficient } });
   settings.baseUrl = normalizeSheinBaseUrl(settings.baseUrl);
   settings.credentialEnvironment = normalizeOrigin(settings.credentialEnvironment);
+  settings.credentialSource = settings.credentialSource === 'vault' ? 'vault' : 'manual';
+  settings.credentialRecordId = typeof settings.credentialRecordId === 'string' && /^rec-[a-f0-9]{12}$/.test(settings.credentialRecordId) ? settings.credentialRecordId : '';
+  settings.credentialRecordLabel = typeof settings.credentialRecordLabel === 'string' ? settings.credentialRecordLabel.trim().slice(0, 64) : '';
+  settings.credentialRecordAppId = typeof settings.credentialRecordAppId === 'string' ? settings.credentialRecordAppId.trim().slice(0, 256) : '';
+  settings.credentialRecordEnvironment = ['production', 'sandbox'].includes(settings.credentialRecordEnvironment) ? settings.credentialRecordEnvironment : '';
   settings.appId = typeof settings.appId === 'string' ? settings.appId.trim() : '';
   settings.openKeyId = typeof settings.openKeyId === 'string' ? settings.openKeyId.trim() : '';
+  if (settings.credentialSource !== 'vault' || !settings.credentialRecordId) {
+    settings.credentialSource = 'manual';
+    settings.credentialRecordId = '';
+    settings.credentialRecordLabel = '';
+    settings.credentialRecordAppId = '';
+    settings.credentialRecordEnvironment = '';
+  }
   return settings;
 }
 
@@ -97,11 +115,40 @@ export function createController({ client, now = () => Date.now(), sleep = ms =>
     state.categories = null;
   }
 
+  async function revokeVaultGrant() {
+    const id = state.settings.credentialRecordId;
+    if (id) await client.credentials.records.revoke(id).catch(() => {});
+  }
+
+  async function requireVaultRecord(baseUrl = state.settings.baseUrl) {
+    const records = await client.credentials.records.list().catch(() => []);
+    const record = records.find(item => item.id === state.settings.credentialRecordId);
+    if (!record) throw new Error('凭证授权已失效，请重新选择。');
+    const mismatch = vaultSelectionError(record, baseUrl);
+    if (mismatch) throw new Error(mismatch);
+    return record;
+  }
+
+  function clearVaultSettings(settings) {
+    return {
+      ...settings,
+      credentialSource: 'manual',
+      credentialRecordId: '',
+      credentialRecordLabel: '',
+      credentialRecordAppId: '',
+      credentialRecordEnvironment: '',
+    };
+  }
+
   // 店铺凭据与应用凭据必须属于同一套希音环境。环境变化时先清掉旧的一对，
   // 避免把旧域名签发的密钥继续发给新域名。
   async function replaceSettings(patch) {
     const next = mergeSettings({ ...state.settings, ...patch });
     if (next.baseUrl !== state.settings.baseUrl) {
+      if (state.settings.credentialSource === 'vault' && state.settings.credentialRecordEnvironment !== vaultEnvironmentOfBaseUrl(next.baseUrl)) {
+        await revokeVaultGrant();
+        Object.assign(next, clearVaultSettings(next), { appId: '' });
+      }
       await clearCredentialPair();
       next.openKeyId = '';
       next.credentialEnvironment = '';
@@ -186,6 +233,7 @@ export function createController({ client, now = () => Date.now(), sleep = ms =>
 
   async function ensureCredentials() {
     const settings = state.settings;
+    if (settings.credentialSource === 'vault') await requireVaultRecord(settings.baseUrl);
     const environmentMatches = settings.credentialEnvironment === settings.baseUrl;
     if (!environmentMatches || !settings.openKeyId || !(await client.credentials.status(SECRET_CREDENTIAL))) {
       throw new Error('请先在设置中连接希音店铺。');
@@ -262,6 +310,40 @@ export function createController({ client, now = () => Date.now(), sleep = ms =>
     notify();
   }
 
+  async function listVaultCredentials() {
+    return client.credentials.records.browse();
+  }
+
+  async function useVaultCredential(id) {
+    const access = await client.credentials.records.request(id);
+    const mismatch = vaultSelectionError(access, state.settings.baseUrl);
+    if (mismatch) {
+      await client.credentials.records.revoke(id).catch(() => {});
+      throw new Error(mismatch);
+    }
+    if (state.settings.credentialRecordId && state.settings.credentialRecordId !== access.id) {
+      await client.credentials.records.revoke(state.settings.credentialRecordId).catch(() => {});
+    }
+    // 应用身份签名改由共享凭证完成，旧的插件私有 APP_SecretKey 不再保留。
+    await client.credentials.clear(APP_SECRET_CREDENTIAL).catch(() => {});
+    const next = vaultSettingsFor(state.settings, access);
+    await client.storage.set(SETTINGS_KEY, next);
+    state.settings = next;
+    state.categories = null;
+    notify();
+    return access;
+  }
+
+  async function useManualCredential() {
+    await revokeVaultGrant();
+    const next = clearVaultSettings(state.settings);
+    await client.storage.set(SETTINGS_KEY, next);
+    state.settings = next;
+    state.categories = null;
+    notify();
+    return next;
+  }
+
   // 应用授权：APP_ID + APP_SecretKey 只用来换店铺凭据，换到的 secretKey 解密后
   // 才用于业务接口签名。任何一步失败都不写半套凭据，避免界面上出现「已连接」但签不了名。
   function appCredentials(appId, appSecretKey) {
@@ -274,9 +356,14 @@ export function createController({ client, now = () => Date.now(), sleep = ms =>
 
   // 打开希音授权页：回调地址由插件按当前环境生成，授权结果在同一标签页里读回。
   async function startAuthorization({ appId, appSecretKey, baseUrl }) {
-    const { appIdValue, appSecret } = appCredentials(appId, appSecretKey);
+    const vault = state.settings.credentialSource === 'vault';
+    if (vault) await requireVaultRecord(baseUrl ?? state.settings.baseUrl);
+    const { appIdValue, appSecret } = vault
+      ? { appIdValue: state.settings.credentialRecordAppId, appSecret: '' }
+      : appCredentials(appId, appSecretKey);
+    if (!appIdValue) throw new Error('请先选择一条共享凭证。');
     await replaceSettings({ appId: appIdValue, baseUrl: baseUrl ?? state.settings.baseUrl });
-    await client.credentials.set(APP_SECRET_CREDENTIAL, appSecret);
+    if (!vault) await client.credentials.set(APP_SECRET_CREDENTIAL, appSecret);
     state.settings = mergeSettings({ ...state.settings, credentialEnvironment: state.settings.baseUrl });
     await client.storage.set(SETTINGS_KEY, state.settings);
     const callbackUrl = callbackUrlOf(state.settings.baseUrl);
@@ -308,12 +395,26 @@ export function createController({ client, now = () => Date.now(), sleep = ms =>
   }
 
   async function authorize({ appId, appSecretKey, tempToken, baseUrl }) {
-    const { appIdValue, appSecret } = appCredentials(appId, appSecretKey);
+    const vault = state.settings.credentialSource === 'vault';
+    if (vault) await requireVaultRecord(baseUrl ?? state.settings.baseUrl);
+    const { appIdValue, appSecret } = vault
+      ? { appIdValue: state.settings.credentialRecordAppId, appSecret: String(appSecretKey ?? '').trim() }
+      : appCredentials(appId, appSecretKey);
+    if (!appIdValue) throw new Error('请先选择一条共享凭证。');
+    // 共享凭证模式下，APP_SecretKey 只用于解密本次下发的店铺密钥，不写入凭据库。
+    if (vault && !appSecret) throw new Error('请输入 APP_SecretKey 完成本次店铺授权，输入内容不会保存。');
     if (!String(tempToken ?? '').trim()) throw new Error('希音授权没有返回临时授权码，请重新连接。');
     // 换密钥要跟着界面上选的环境走，否则选了测试环境却把授权码发到正式环境。
     await replaceSettings({ appId: appIdValue, baseUrl: baseUrl ?? state.settings.baseUrl });
-    await client.credentials.set(APP_SECRET_CREDENTIAL, appSecret);
-    const info = await authorizeWithTempToken({ client, appId: appIdValue, tempToken, baseUrl: state.settings.baseUrl, now });
+    if (!vault) await client.credentials.set(APP_SECRET_CREDENTIAL, appSecret);
+    const info = await authorizeWithTempToken({
+      client,
+      appId: appIdValue,
+      tempToken,
+      baseUrl: state.settings.baseUrl,
+      now,
+      credential: appCredentialFor(state.settings, APP_SECRET_CREDENTIAL),
+    });
     const secretKey = await decryptSecretKey(info.secretKey, appSecret);
     await client.credentials.set(SECRET_CREDENTIAL, secretKey);
     state.settings = mergeSettings({
@@ -329,10 +430,25 @@ export function createController({ client, now = () => Date.now(), sleep = ms =>
 
   async function credentialStatus() {
     const environmentMatches = state.settings.credentialEnvironment === state.settings.baseUrl;
+    let vaultRecord = null;
+    let vaultError = '';
+    if (state.settings.credentialSource === 'vault') {
+      const records = await client.credentials.records.list().catch(() => []);
+      const record = records.find(item => item.id === state.settings.credentialRecordId);
+      if (!record) vaultError = '凭证授权已失效，请重新选择。';
+      else {
+        const mismatch = vaultSelectionError(record, state.settings.baseUrl);
+        if (mismatch) vaultError = mismatch;
+        else vaultRecord = { id: record.id, label: record.label, appId: record.appId, environment: record.environment };
+      }
+    }
     return {
       sheinSecret: environmentMatches && await client.credentials.status(SECRET_CREDENTIAL),
-      appSecret: environmentMatches && await client.credentials.status(APP_SECRET_CREDENTIAL),
+      appSecret: state.settings.credentialSource === 'manual' && environmentMatches && await client.credentials.status(APP_SECRET_CREDENTIAL),
       openKeyId: environmentMatches && Boolean(state.settings.openKeyId),
+      credentialSource: state.settings.credentialSource,
+      vaultRecord,
+      vaultError,
       model: state.settings.model
     };
   }
@@ -638,7 +754,7 @@ export function createController({ client, now = () => Date.now(), sleep = ms =>
   }
 
   return Object.freeze({
-    load, saveSettings, setSecret, clearSecret, startAuthorization, awaitAuthorization, resetAuthorizationTab, authorize, credentialStatus, aiCatalog, imageCatalog,
+    load, saveSettings, setSecret, clearSecret, listVaultCredentials, useVaultCredential, useManualCredential, startAuthorization, awaitAuthorization, resetAuthorizationTab, authorize, credentialStatus, aiCatalog, imageCatalog,
     checkNetworkExit,
     collect, translate, translateOnlyTitle, suggestTitles, applyTitle, prepareImages, loadCategories, loadTemplate, suggestCategory, ensureTab,
     saveDraft, submit, poll, remove, resume,

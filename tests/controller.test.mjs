@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createCipheriv } from 'node:crypto';
 import { createController } from '../ui/controller.mjs';
+import { APP_SECRET_CREDENTIAL, SECRET_CREDENTIAL } from '../ui/shein-client.mjs';
 import { createFakeClient, ok, businessError } from './support/fake-host.mjs';
 
 const snapshot = JSON.parse(await readFile(new URL('./fixtures/1688-detail-snapshot.json', import.meta.url), 'utf8'));
@@ -455,6 +456,123 @@ test('授权失败时不会留下半套店铺凭据', async () => {
   assert.equal(controller.getState().settings.openKeyId, '');
   assert.equal((await controller.credentialStatus()).sheinSecret, false);
   await assert.rejects(() => controller.submit('missing', { confirm: true }), /草稿不存在/);
+});
+
+test('凭证库模式用共享记录签名应用身份，不保存 APP_SecretKey', async () => {
+  const record = {
+    id: 'rec-abcdef123456',
+    label: '希音应用凭证',
+    appId: APP_ID,
+    environment: 'production',
+    createdAt: 1,
+    updatedAt: 2,
+    hasSecret: true,
+    secret: APP_SECRET,
+  };
+  const fake = createFakeClient({
+    snapshot,
+    vaultRecords: [record],
+    respond: options => {
+      if (new URL(options.url).pathname === '/open-api/auth/get-by-token') {
+        return ok({ openKeyId: 'STORE-KEY-VAULT', secretKey: encryptSecret('STORE-SECRET-VAULT') });
+      }
+      throw new Error('未预期的请求：' + options.url);
+    },
+  });
+  const controller = createController({ client: fake.client, now: () => 1760000000000 });
+  await controller.load();
+  const candidates = await controller.listVaultCredentials();
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0].appIdMasked, '••••51B4');
+  assert.equal(candidates[0].granted, false);
+
+  const access = await controller.useVaultCredential(record.id);
+  assert.deepEqual(access, { id: record.id, label: '希音应用凭证', appId: APP_ID, environment: 'production' });
+  assert.equal(fake.secrets.has(APP_SECRET_CREDENTIAL), false);
+  assert.equal(fake.vaultGrants.has(record.id), true);
+
+  const started = await controller.startAuthorization({ appId: 'IGNORED', appSecretKey: '', baseUrl: 'https://openapi.sheincorp.cn' });
+  assert.match(started.authorizeUrl, new RegExp(APP_ID));
+  assert.equal(fake.secrets.has(APP_SECRET_CREDENTIAL), false);
+
+  const connected = await controller.authorize({
+    appId: 'IGNORED',
+    appSecretKey: APP_SECRET,
+    tempToken: 'TEMP-TOKEN',
+    baseUrl: 'https://openapi.sheincorp.cn',
+  });
+  assert.equal(connected.openKeyId, 'STORE-KEY-VAULT');
+  assert.equal(fake.secrets.get(SECRET_CREDENTIAL), 'STORE-SECRET-VAULT');
+  // 共享凭证只用于应用身份签名，APP_SecretKey 不会落进插件私有的凭据槽。
+  assert.equal(fake.secrets.has(APP_SECRET_CREDENTIAL), false);
+  const appIdentitySign = fake.calls.signs.find(options => options.credential?.record === record.id);
+  assert.ok(appIdentitySign);
+  assert.equal(appIdentitySign.algorithm, 'hmac-sha256');
+  assert.equal(appIdentitySign.keySuffix.length, 5);
+  assert.match(appIdentitySign.message, new RegExp(`^${APP_ID}&\\d{13}&/open-api/auth/get-by-token$`));
+  const settings = controller.getState().settings;
+  assert.equal(settings.credentialSource, 'vault');
+  assert.equal(settings.credentialRecordId, record.id);
+  assert.equal(settings.appId, APP_ID);
+  const status = await controller.credentialStatus();
+  assert.equal(status.credentialSource, 'vault');
+  assert.equal(status.vaultRecord.id, record.id);
+  assert.equal(status.vaultError, '');
+});
+
+test('凭证库授权失效时提示重新选择，切换环境或手动模式会撤销授权', async () => {
+  const record = {
+    id: 'rec-abcdef123456',
+    label: '希音应用凭证',
+    appId: APP_ID,
+    environment: 'production',
+    createdAt: 1,
+    updatedAt: 2,
+    hasSecret: true,
+    secret: APP_SECRET,
+  };
+  const fake = createFakeClient({ snapshot, vaultRecords: [record], respond: routeOverrides() });
+  const controller = createController({ client: fake.client, now: () => 1760000000000 });
+  await controller.load();
+  await controller.useVaultCredential(record.id);
+  await controller.saveSettings({ baseUrl: 'https://openapi-test01.sheincorp.cn' });
+  assert.equal(fake.vaultGrants.has(record.id), false);
+  assert.equal(controller.getState().settings.credentialSource, 'manual');
+  assert.equal(controller.getState().settings.credentialRecordId, '');
+  assert.ok(fake.calls.vault.some(([action, id]) => action === 'revoke' && id === record.id));
+
+  // 选回正式环境并重新授权，再切回手动填写，同样撤销共享凭证。
+  const second = { ...record, id: 'rec-111111111111' };
+  const another = createFakeClient({ snapshot, vaultRecords: [second], respond: routeOverrides() });
+  const other = createController({ client: another.client, now: () => 1760000000000 });
+  await other.load();
+  await other.useVaultCredential(second.id);
+  await other.useManualCredential();
+  assert.equal(another.vaultGrants.has(second.id), false);
+  assert.equal(other.getState().settings.credentialSource, 'manual');
+});
+
+test('启动后发现凭证库授权消失时给出重新选择提示', async () => {
+  const fake = createFakeClient({ snapshot });
+  await fake.storage.set('settings', {
+    model: '',
+    coefficient: 1.35,
+    site: 'shein',
+    baseUrl: 'https://openapi.sheincorp.cn',
+    credentialSource: 'vault',
+    credentialRecordId: 'rec-abcdef123456',
+    credentialRecordLabel: '已失效凭证',
+    credentialRecordAppId: APP_ID,
+    credentialRecordEnvironment: 'production',
+    appId: APP_ID,
+    openKeyId: 'STORE-KEY',
+    credentialEnvironment: 'https://openapi.sheincorp.cn',
+  });
+  const controller = createController({ client: fake.client, now: () => 1760000000000 });
+  await controller.load();
+  const status = await controller.credentialStatus();
+  assert.match(status.vaultError, /授权已失效/);
+  await assert.rejects(controller.startAuthorization({ appId: APP_ID, appSecretKey: '', baseUrl: 'https://openapi.sheincorp.cn' }), /授权已失效/);
 });
 
 test('未连接希音时提交提示先完成授权', async () => {

@@ -9,7 +9,7 @@
 | 单元 | `npm test` | 清单校验、采集解析、定价、签名、载荷、状态机、翻译解析、图片校验、译文版本切换 | 无 |
 | 预览 | `node scripts/preview.mjs` | 多窗口尺寸下的布局、原貌大图、查看器、对比滑杆、翻译弹窗、窄屏无横向溢出 | Playwright Chromium |
 | 端到端 | `QINGZUO_DESKTOP_ROOT=… npm run test:e2e` | 真实 Electron 底座装包 → 采集 → 翻译 → 配图 → 审核 → 确认 → 提交 → 查审核状态 | 已构建的 `qingzuo-desktop` |
-| 宿主冒烟 | `QINGZUO_HOST_EXECUTABLE=… npm run test:host` | 打进安装包的宿主能加载插件、界面保持静默、密钥框是密码框 | 已安装的轻作桌面 |
+| 宿主冒烟 | `QINGZUO_HOST_EXECUTABLE=… npm run test:host` | 打进安装包的宿主能加载插件、界面保持静默、密钥框是密码框 | 已安装的轻作 v0.6.20+ 桌面 |
 | 平台契约 | 在 `qingzuo-desktop` 里跑 `npm run test:platform` | 浏览器白名单、`network.sign`、`storage` 隔离与配额 | 底座仓库 |
 
 单元测试是 `node --test tests/*.test.mjs`。`tests/fixtures/1688-detail-snapshot.json` 是录制的快照固定件，采集规则改动必须让它继续通过。
@@ -97,4 +97,4 @@ npm run pack
 4. 在干净的轻作桌面里导入 `.ecplugin` 手动走一遍，或用 `QINGZUO_HOST_EXECUTABLE` 跑宿主冒烟。
 5. 首发形态是本地安装试用；市场签名发布另行安排，不随代码合并自动进行。
 
-底座需要支持插件 API `1.3.0`。旧底座会在安装时拒绝并提示升级，不要通过降低 `api` 声明来兼容——这个插件依赖的浏览器、签名、存储能力在 1.3 之前都不存在。
+底座需要支持插件 API `1.7.0`。旧底座会在安装时拒绝并提示升级，不要通过降低 `api` 声明来兼容——这个版本依赖共享凭证记录和 `{ record }` 网络引用。

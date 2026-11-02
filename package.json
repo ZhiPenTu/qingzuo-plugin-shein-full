@@ -1,6 +1,6 @@
 {
   "name": "@commerce/plugin-shein-full",
-  "version": "0.4.9",
+  "version": "0.4.10",
   "private": true,
   "type": "module",
   "commerce": {
@@ -9,12 +9,13 @@
     "title": "希音全托管铺货",
     "description": "从 1688 采集商品，翻译成英文并生成希音全托管草稿，人工审核确认后才提交发品",
     "category": "电商工具",
-    "api": "^1.5.0",
+    "api": "^1.7.0",
     "ui": "ui/index.html",
-    "releaseNotes": "修复连接希音时授权页提示“关键参数丢失”的问题；升级后请重新连接一次希音店铺并完成授权。",
+    "releaseNotes": "新增从凭证库选择 APP_ID 与 APP_SecretKey，保留手动填写；切换凭证库、接口环境或解除绑定时会撤销授权。升级后旧版已保存的密钥需要重新填写。",
     "permissions": {
       "files": true,
       "storage": true,
+      "credentialVault": "use",
       "credentials": [
         "shein-app-secret",
         "shein-secret-key"
@@ -59,7 +60,7 @@
     "preview": "node scripts/preview.mjs"
   },
   "dependencies": {
-    "@commerce/plugin-sdk": "file:vendor/commerce-plugin-sdk-1.5.0.tgz"
+    "@commerce/plugin-sdk": "file:vendor/commerce-plugin-sdk-1.7.0.tgz"
   },
   "devDependencies": {
     "@playwright/test": "^1.64.0"
