@@ -35,6 +35,7 @@ const state = {
   settingsOpen: false,
   credentialRevision: 0,
   authCancelled: false,
+  vaultDialog: { open: false, loading: false, candidates: [], error: '' },
   tab: 'content',
   imageId: null,
   imageView: 'original',
@@ -1691,9 +1692,131 @@ function fillSettings() {
   $('default-coefficient').value = String(settings.coefficient ?? 1.35);
   $('site').value = settings.site || 'shein';
   $('base-url').value = settings.baseUrl || 'https://openapi.sheincorp.cn';
+  $('credential-source').value = settings.credentialSource === 'vault' ? 'vault' : 'manual';
   $('app-id').value = settings.appId || '';
   $('open-key').value = settings.openKeyId || '';
   $('callback-url').value = callbackUrlOf($('base-url').value);
+  renderCredentialSource();
+}
+
+function vaultMode() {
+  return controller.getState().settings.credentialSource === 'vault';
+}
+
+function renderCredentialSource() {
+  const settings = controller.getState().settings;
+  const vault = settings.credentialSource === 'vault';
+  $('vault-selection').hidden = !vault;
+  $('app-id').readOnly = vault;
+  $('app-id').placeholder = vault ? '由共享凭证提供' : '应用管理里的 APP_ID';
+  $('app-secret-label').textContent = vault ? '本次授权 APP_SecretKey' : '希音 APP_SecretKey';
+  $('app-secret-hint').textContent = vault
+    ? '从凭证库选择后无需保存；首次连接仍需输入一次，仅用于解密本次下发的店铺密钥。'
+    : '保存在系统凭据库，重新打开轻作后需要再次输入。';
+  if (!vault) {
+    $('vault-record').value = '';
+    $('vault-record-status').textContent = '';
+    $('vault-record-status').classList.remove('error');
+    return;
+  }
+  $('vault-record').value = settings.credentialRecordLabel
+    ? settings.credentialRecordLabel + ' · ' + (settings.credentialRecordEnvironment === 'sandbox' ? '沙箱' : '生产')
+    : '还没有选择凭证';
+  const status = state.credentials?.vaultError || '';
+  $('vault-record-status').textContent = status;
+  $('vault-record-status').classList.toggle('error', Boolean(status));
+}
+
+function renderVaultOptions() {
+  const list = $('vault-options');
+  list.replaceChildren();
+  const { candidates, loading, error } = state.vaultDialog;
+  $('vault-dialog-status').textContent = error || (loading ? '正在读取凭证…' : '');
+  $('vault-dialog-status').classList.toggle('error', Boolean(error));
+  $('vault-dialog-empty').hidden = loading || Boolean(error) || candidates.length > 0;
+  for (const candidate of candidates) {
+    const environment = candidate.environment === 'sandbox' ? '沙箱' : '生产';
+    const action = el('button', {
+      class: candidate.granted ? 'secondary small' : 'primary small',
+      type: 'button',
+      text: candidate.granted ? '继续使用' : '使用',
+      onClick: () => void selectVaultRecord(candidate.id)
+    });
+    list.append(el('div', { class: 'vault-option' },
+      el('div', { class: 'vault-option-main' },
+        el('strong', { text: candidate.label }),
+        el('span', { text: candidate.appIdMasked + ' · ' + environment }),
+        candidate.granted ? el('span', { class: 'badge granted', text: '已授权' }) : null
+      ),
+      action
+    ));
+  }
+}
+
+async function loadVaultOptions() {
+  state.vaultDialog.loading = true;
+  state.vaultDialog.error = '';
+  renderVaultOptions();
+  try {
+    const candidates = await controller.listVaultCredentials();
+    state.vaultDialog.candidates = Array.isArray(candidates) ? candidates : [];
+  } catch (error) {
+    state.vaultDialog.candidates = [];
+    state.vaultDialog.error = errorText(error);
+  } finally {
+    state.vaultDialog.loading = false;
+    renderVaultOptions();
+  }
+}
+
+function openVaultDialog() {
+  state.vaultDialog = { open: true, loading: true, candidates: [], error: '' };
+  $('vault-dialog').hidden = false;
+  renderVaultOptions();
+  void loadVaultOptions();
+}
+
+function closeVaultDialog() {
+  state.vaultDialog.open = false;
+  $('vault-dialog').hidden = true;
+  const settings = controller.getState().settings;
+  $('credential-source').value = settings.credentialSource === 'vault' ? 'vault' : 'manual';
+}
+
+async function selectVaultRecord(id) {
+  $('vault-dialog-status').textContent = '正在请求授权…';
+  $('vault-dialog-status').classList.remove('error');
+  try {
+    await controller.useVaultCredential(id);
+    closeVaultDialog();
+    fillSettings();
+    state.credentialRevision += 1;
+    state.credentials = { ...(state.credentials ?? {}), appSecret: false };
+    await renderCredentialStatus();
+    setStatus('shein-status', '已选择共享凭证，请确认接口环境后连接希音。');
+  } catch (error) {
+    $('vault-dialog-status').textContent = errorText(error);
+    $('vault-dialog-status').classList.add('error');
+  }
+}
+
+async function changeCredentialSource() {
+  const next = $('credential-source').value;
+  if (next === 'manual') {
+    await controller.useManualCredential();
+    fillSettings();
+    await renderCredentialStatus();
+    setStatus('shein-status', '已切换为手动填写，APP_SecretKey 需要重新输入。');
+    return;
+  }
+  openVaultDialog();
+}
+
+async function unbindVaultCredential() {
+  await controller.useManualCredential();
+  fillSettings();
+  await renderCredentialStatus();
+  setStatus('shein-status', '已解除共享凭证，授权已撤销。');
 }
 
 function renderNetworkGuide() {
@@ -1768,14 +1891,20 @@ async function doSaveSettings() {
 
 async function doAuthorize() {
   // 系统凭据库不会自动回填；本次页面会话输入过的值可由眼睛临时回显。
-  const appId = $('app-id').value.trim();
+  const settings = controller.getState().settings;
+  const vault = settings.credentialSource === 'vault';
+  const appId = vault ? settings.credentialRecordAppId : $('app-id').value.trim();
   const appSecretKey = $('app-secret').value.trim();
+  if (vault && !settings.credentialRecordId) {
+    setStatus('shein-status', '请先选择一条共享凭证。', true);
+    return;
+  }
   if (!appId) {
-    setStatus('shein-status', '请先填写希音 APP_ID。', true);
+    setStatus('shein-status', vault ? '请先选择一条共享凭证。' : '请先填写希音 APP_ID。', true);
     return;
   }
   if (!appSecretKey) {
-    setStatus('shein-status', '请先填写希音 APP_SecretKey。', true);
+    setStatus('shein-status', vault ? '请输入 APP_SecretKey 完成本次店铺授权，输入内容不会保存。' : '请先填写希音 APP_SecretKey。', true);
     return;
   }
   const baseUrl = $('base-url').value;
@@ -1783,8 +1912,12 @@ async function doAuthorize() {
   const connected = await run('正在打开希音授权页…', async () => {
     state.credentialRevision += 1;
     const started = await controller.startAuthorization({ appId, appSecretKey, baseUrl });
-    state.credentials = { ...(state.credentials ?? {}), appSecret: true };
-    rememberSessionSecret('app-secret', appSecretKey);
+    if (!vault) {
+      state.credentials = { ...(state.credentials ?? {}), appSecret: true };
+      rememberSessionSecret('app-secret', appSecretKey);
+    } else {
+      forgetSessionSecret('app-secret');
+    }
     $('app-secret').value = '';
     resetSecretVisibility('app-secret');
     $('cancel-authorize').hidden = false;
@@ -1863,11 +1996,20 @@ async function renderCredentialStatus() {
     // 凭据状态与保存密钥是两条异步链路：保存设置期间发起的刷新可能晚于
     // 用户刚看到的保存结果返回，不能让它把新状态覆盖回旧值。
     if (revision !== state.credentialRevision) return;
-    state.credentials = { openKeyId: status.openKeyId, appSecret: status.appSecret, sheinSecret: status.sheinSecret };
+    state.credentials = {
+      openKeyId: status.openKeyId,
+      appSecret: status.appSecret,
+      sheinSecret: status.sheinSecret,
+      credentialSource: status.credentialSource,
+      vaultRecord: status.vaultRecord,
+      vaultError: status.vaultError,
+    };
     syncSecretField('app-secret');
     syncSecretField('secret-key');
-    if (status.openKeyId && status.sheinSecret) setStatus('shein-status', '已连接希音，可以提交发品。');
-    else if (status.appSecret) setStatus('shein-status', 'APP_SecretKey 已保存；重新打开轻作后需再次输入。');
+    renderCredentialSource();
+    if (status.vaultError) setStatus('shein-status', status.vaultError, true);
+    else if (status.openKeyId && status.sheinSecret) setStatus('shein-status', '已连接希音，可以提交发品。');
+    else if (status.credentialSource === 'manual' && status.appSecret) setStatus('shein-status', 'APP_SecretKey 已保存；重新打开轻作后需再次输入。');
     else setStatus('shein-status', '还没有连接希音。');
     setStatus('secret-status', status.sheinSecret ? 'secretKey 已保存；输入新密钥会覆盖。' : 'secretKey 未保存。');
   } catch {
@@ -1893,6 +2035,11 @@ function bindEvents() {
     }
   });
   $('save-settings').addEventListener('click', () => void doSaveSettings());
+  $('credential-source').addEventListener('change', () => void changeCredentialSource());
+  $('choose-vault-record').addEventListener('click', openVaultDialog);
+  $('unbind-vault-record').addEventListener('click', () => void unbindVaultCredential());
+  $('vault-dialog-cancel').addEventListener('click', closeVaultDialog);
+  $('vault-dialog-refresh').addEventListener('click', () => void loadVaultOptions());
   $('authorize').addEventListener('click', () => void doAuthorize());
   $('cancel-authorize').addEventListener('click', () => {
     state.authCancelled = true;

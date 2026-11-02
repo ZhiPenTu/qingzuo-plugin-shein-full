@@ -26,12 +26,14 @@ export function businessError(code, msg) {
 
 // 最小可用的插件宿主替身：存储、凭据、浏览器和网络都记录调用，方便断言
 // “没点确认就绝不发品”这类安全约定。
-export function createFakeClient({ snapshot, snapshots = {}, resource = { data: PNG_1X1, mime: 'image/png', name: 'main.png' }, respond, translation, complete, imageModels, batch } = {}) {
+export function createFakeClient({ snapshot, snapshots = {}, resource = { data: PNG_1X1, mime: 'image/png', name: 'main.png' }, respond, translation, complete, imageModels, batch, vaultRecords = [] } = {}) {
   const storage = new Map();
   const files = new Map();
   const secrets = new Map();
   const tabs = [];
-  const calls = { ai: [], browser: [], network: [], storage: [], credentials: [], resources: [], files: [], removed: [] };
+  const vault = new Map(vaultRecords.map(record => [record.id, { ...record }]));
+  const vaultGrants = new Set();
+  const calls = { ai: [], browser: [], network: [], signs: [], storage: [], credentials: [], vault: [], resources: [], files: [], removed: [] };
   const translated = {
     title: 'Mock translated title',
     bullets: ['Mock benefit one', 'Mock benefit two'],
@@ -68,7 +70,39 @@ export function createFakeClient({ snapshot, snapshots = {}, resource = { data: 
     credentials: {
       async set(name, value) { calls.credentials.push(['set', name]); secrets.set(name, value); },
       async status(name) { return secrets.has(name); },
-      async clear(name) { calls.credentials.push(['clear', name]); secrets.delete(name); }
+      async clear(name) { calls.credentials.push(['clear', name]); secrets.delete(name); },
+      records: {
+        async list() {
+          return [...vault.values()]
+            .filter(record => vaultGrants.has(record.id))
+            .map(({ secret: _secret, ...record }) => ({ ...record, grants: 1 }));
+        },
+        async browse() {
+          return [...vault.values()].map(({ secret: _secret, ...record }) => ({
+            id: record.id,
+            label: record.label,
+            environment: record.environment,
+            appIdMasked: '••••' + record.appId.slice(-4),
+            granted: vaultGrants.has(record.id),
+          }));
+        },
+        async request(id) {
+          const record = vault.get(id);
+          if (!record) throw new Error('凭证已删除，请重新选择。');
+          vaultGrants.add(id);
+          calls.vault.push(['request', id]);
+          return { id, label: record.label, appId: record.appId, environment: record.environment };
+        },
+        async revoke(id) {
+          vaultGrants.delete(id);
+          calls.vault.push(['revoke', id]);
+        },
+        async grants() { return [...vaultGrants].map(id => ({ pluginId: 'official.shein-full', title: '希音全托管铺货', confirmedAt: 1 })); },
+        async revokeGrant(id) { vaultGrants.delete(id); calls.vault.push(['revokeGrant', id]); },
+        async create() { throw new Error('测试宿主不支持创建共享凭证。'); },
+        async update() { throw new Error('测试宿主不支持更新共享凭证。'); },
+        async remove() { throw new Error('测试宿主不支持删除共享凭证。'); }
+      }
     },
     files: {
       async url(token) { return 'plugin-file://' + token; },
@@ -112,8 +146,17 @@ export function createFakeClient({ snapshot, snapshots = {}, resource = { data: 
     },
     network: {
       async sign(options = {}) {
-        if (!secrets.has(options.credential)) throw new Error('请先配置服务凭据。');
-        const secret = secrets.get(options.credential);
+        calls.signs.push(options);
+        const recordId = typeof options.credential === 'object' ? options.credential?.record : null;
+        let secret;
+        if (recordId) {
+          if (!vaultGrants.has(recordId)) throw new Error('请先在凭证管理中授权这个工具使用该凭证。');
+          secret = vault.get(recordId)?.secret;
+        } else {
+          if (!secrets.has(options.credential)) throw new Error('请先配置服务凭据。');
+          secret = secrets.get(options.credential);
+        }
+        if (!secret) throw new Error('请先配置服务凭据。');
         const digest = options.algorithm === 'sha256'
           ? createHash('sha256').update(options.message, 'utf8').digest('base64')
           : createHmac('sha256', secret + (options.keySuffix ?? '')).update(options.message, 'utf8').digest('base64');
@@ -165,5 +208,5 @@ export function createFakeClient({ snapshot, snapshots = {}, resource = { data: 
     }
   };
 
-  return { client, calls, storage, files, secrets, tabs };
+  return { client, calls, storage, files, secrets, tabs, vault, vaultGrants };
 }

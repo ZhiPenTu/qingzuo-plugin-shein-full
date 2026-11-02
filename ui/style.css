@@ -375,6 +375,15 @@ td.supply { color: var(--brand); font-weight: 600; }
 .warning { margin-top: 10px; border-radius: 8px; padding: 8px 10px; color: var(--warn); background: var(--warn-soft); font-size: 12px; line-height: 1.6; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
 .dialog-card .status { margin-top: 10px; }
+.vault-options { display: flex; max-height: min(48vh, 400px); flex-direction: column; gap: 8px; margin-top: 12px; overflow: auto; }
+.vault-option { display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+.vault-option-main { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
+.vault-option-main strong { font-size: 13px; }
+.vault-option-main span { color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+.vault-option .badge { flex: 0 0 auto; border-radius: 999px; padding: 2px 8px; color: var(--muted); background: var(--muted-surface); font-size: 11px; }
+.vault-option .badge.sandbox { color: var(--warn); background: var(--warn-soft); }
+.vault-option .badge.granted { color: var(--brand); background: var(--brand-soft); }
+.vault-option button { flex: 0 0 auto; }
 progress { width: 100%; height: 6px; margin-top: 8px; accent-color: var(--brand); }
 
 /* ---------- Title suggestions ---------- */

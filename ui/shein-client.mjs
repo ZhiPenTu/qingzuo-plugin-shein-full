@@ -163,7 +163,7 @@ export function parseAuthorization(info) {
 
 // 用应用的 APP_ID + APP_SecretKey 签名，把授权页返回的 tempToken 换成店铺
 // openKeyId 与加密的 secretKey；调用方负责用 APP_SecretKey 解密后再保存。
-export async function authorizeWithTempToken({ client, appId, tempToken, baseUrl = SHEIN_BASE_URL, now = () => Date.now() }) {
+export async function authorizeWithTempToken({ client, appId, tempToken, baseUrl = SHEIN_BASE_URL, now = () => Date.now(), credential = APP_SECRET_CREDENTIAL }) {
   const appIdValue = typeof appId === 'string' ? appId.trim() : '';
   if (!appIdValue) throw new SheinError('请先填写希音 APP_ID。');
   const token = typeof tempToken === 'string' ? tempToken.trim() : '';
@@ -172,7 +172,7 @@ export async function authorizeWithTempToken({ client, appId, tempToken, baseUrl
   const timestamp = String(now());
   const random = randomKey(5);
   const message = buildSignMessage({ openKeyId: appIdValue, timestamp, path: PATHS.authorize });
-  const signed = await client.network.sign({ credential: APP_SECRET_CREDENTIAL, algorithm: 'hmac-sha256', message, keySuffix: random });
+  const signed = await client.network.sign({ credential, algorithm: 'hmac-sha256', message, keySuffix: random });
   const signature = composeSignature(random, signed.digest);
   const info = parseEnvelope(await client.network.request({
     url: origin + PATHS.authorize,

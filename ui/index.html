@@ -61,12 +61,29 @@
         </select>
       </div>
       <div class="field">
+        <label for="credential-source">凭证来源</label>
+        <select id="credential-source">
+          <option value="manual">手动填写</option>
+          <option value="vault">从凭证库选择</option>
+        </select>
+        <p class="hint">凭证库只接管 APP_ID 与 APP_SecretKey，店铺密钥仍单独保存。</p>
+      </div>
+      <div id="vault-selection" class="field field-wide" hidden>
+        <label for="vault-record">共享凭证</label>
+        <div class="row">
+          <input id="vault-record" type="text" readonly placeholder="还没有选择凭证">
+          <button id="choose-vault-record" class="secondary small" type="button">选择凭证</button>
+          <button id="unbind-vault-record" class="secondary small" type="button">解除绑定</button>
+        </div>
+        <p id="vault-record-status" class="hint" role="status"></p>
+      </div>
+      <div id="app-id-field" class="field">
         <label for="app-id">希音 APP_ID</label>
         <input id="app-id" type="text" autocomplete="off" placeholder="应用管理里的 APP_ID">
       </div>
-      <div class="field">
+      <div id="app-secret-field" class="field">
         <div class="field-label">
-          <label for="app-secret">希音 APP_SecretKey</label>
+          <label id="app-secret-label" for="app-secret">希音 APP_SecretKey</label>
           <span id="app-secret-state" class="secret-state" hidden></span>
         </div>
         <div class="secret-input">
@@ -82,6 +99,7 @@
             </svg>
           </button>
         </div>
+        <p id="app-secret-hint" class="hint">保存在系统凭据库，重新打开轻作后需要再次输入。</p>
       </div>
       <div class="field field-wide">
         <label for="callback-url">授权回调地址</label>
@@ -433,6 +451,20 @@
     <div class="dialog-actions">
       <button id="submit-cancel" class="secondary" type="button">取消</button>
       <button id="submit-confirm" class="primary" type="button">确认提交</button>
+    </div>
+  </div>
+</div>
+
+<div id="vault-dialog" class="dialog" hidden>
+  <div class="dialog-card" role="dialog" aria-modal="true" aria-labelledby="vault-dialog-title">
+    <h2 id="vault-dialog-title">选择共享凭证</h2>
+    <p class="hint">选择后由轻作确认授权。密钥不会显示，也不能复制。</p>
+    <p id="vault-dialog-status" class="status" role="status"></p>
+    <div id="vault-options" class="vault-options"></div>
+    <p id="vault-dialog-empty" class="empty" hidden>凭证库里还没有可用凭证。</p>
+    <div class="dialog-actions">
+      <button id="vault-dialog-cancel" class="secondary" type="button">取消</button>
+      <button id="vault-dialog-refresh" class="secondary" type="button">刷新</button>
     </div>
   </div>
 </div>
